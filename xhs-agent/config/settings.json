@@ -1,0 +1,18 @@
+{
+  "account": {
+    "style": "职场干货，专注分享职场技能、效率工具、职业成长、求职经验等实用内容",
+    "tone": "亲切实用、有共鸣感、干货满满，像朋友分享经验而不是说教",
+    "tags": ["职场干货", "职场成长", "打工人", "职场技巧", "效率工具", "职业规划", "上班族"],
+    "daily_limit": 2
+  },
+  "publish": {
+    "max_per_day": 2,
+    "image_dir": "/workspaces/AIROOM/xhs-agent/images"
+  },
+  "notify": {
+    "enabled": false,
+    "comment": "通知目前通过 OpenClaw 主 session 输出日志，如需 Telegram 推送请配置 bot_token 和 chat_id",
+    "telegram_bot_token": "",
+    "telegram_chat_id": ""
+  }
+}
