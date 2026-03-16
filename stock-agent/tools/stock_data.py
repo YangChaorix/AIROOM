@@ -46,42 +46,47 @@ def get_stock_basic_info(stock_code: str) -> str:
         JSON格式的股票基本信息字符串
     """
     try:
-        # 获取 A 股所有股票基本信息
         stock_info_df = ak.stock_individual_info_em(symbol=stock_code)
 
         if stock_info_df is None or stock_info_df.empty:
             return json.dumps({"error": f"未找到股票 {stock_code} 的基本信息"}, ensure_ascii=False)
 
-        # stock_individual_info_em 返回格式为 item/value 两列
+        # stock_individual_info_em 返回 item/value 两列
+        # 已包含：最新价、股票代码、股票简称、总股本、流通股、总市值、流通市值、行业、上市时间
         info_dict = {}
         if "item" in stock_info_df.columns and "value" in stock_info_df.columns:
             for _, row in stock_info_df.iterrows():
                 info_dict[str(row["item"])] = str(row["value"])
         else:
-            # 备选：直接转为字典
             info_dict = stock_info_df.to_dict(orient="list")
 
-        # 获取实时行情（补充市值数据）
+        # 格式化市值为亿元
         try:
-            realtime_df = ak.stock_zh_a_spot_em()
-            if realtime_df is not None and not realtime_df.empty:
-                stock_realtime = realtime_df[realtime_df["代码"] == stock_code]
-                if not stock_realtime.empty:
-                    row = stock_realtime.iloc[0]
-                    info_dict.update({
-                        "最新价": str(row.get("最新价", "N/A")),
-                        "涨跌幅": str(row.get("涨跌幅", "N/A")) + "%",
-                        "总市值(亿)": str(round(float(row.get("总市值", 0)) / 1e8, 2))
-                        if row.get("总市值") not in [None, "N/A"] else "N/A",
-                        "流通市值(亿)": str(round(float(row.get("流通市值", 0)) / 1e8, 2))
-                        if row.get("流通市值") not in [None, "N/A"] else "N/A",
-                        "市盈率(动态)": str(row.get("市盈率-动态", "N/A")),
-                        "市净率": str(row.get("市净率", "N/A")),
-                        "60日涨跌幅": str(row.get("60日涨跌幅", "N/A")) + "%",
-                        "年初至今涨跌幅": str(row.get("年初至今涨跌幅", "N/A")) + "%",
-                    })
-        except Exception as e:
-            info_dict["实时行情获取失败"] = str(e)
+            total_mv = float(info_dict.get("总市值", 0))
+            float_mv = float(info_dict.get("流通市值", 0))
+            info_dict["总市值(亿)"] = str(round(total_mv / 1e8, 2))
+            info_dict["流通市值(亿)"] = str(round(float_mv / 1e8, 2))
+        except Exception:
+            pass
+
+        # 补充近2日涨跌幅（单股接口，速度快）
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=5)
+            hist_df = ak.stock_zh_a_hist(
+                symbol=stock_code, period="daily",
+                start_date=_format_date(start_date),
+                end_date=_format_date(end_date),
+                adjust="qfq",
+            )
+            if hist_df is not None and len(hist_df) >= 1:
+                col_map = {"涨跌幅": "pct_change", "换手率": "turnover_rate"}
+                hist_df = hist_df.rename(columns={k: v for k, v in col_map.items() if k in hist_df.columns})
+                last = hist_df.iloc[-1]
+                info_dict["今日涨跌幅(%)"] = str(round(float(last.get("pct_change", 0)), 2))
+                info_dict["今日换手率(%)"] = str(round(float(last.get("turnover_rate", 0)), 2))
+        except Exception:
+            pass
 
         info_dict["股票代码"] = stock_code
         return json.dumps(info_dict, ensure_ascii=False, indent=2)
@@ -109,7 +114,9 @@ def get_financial_indicators(stock_code: str) -> str:
         try:
             profit_df = ak.stock_financial_abstract_ths(symbol=stock_code, indicator="按年度")
             if profit_df is not None and not profit_df.empty:
-                # 取最近4期数据
+                # 排序：报告期降序，取最近4期
+                if "报告期" in profit_df.columns:
+                    profit_df = profit_df.sort_values("报告期", ascending=False)
                 recent = profit_df.head(4)
                 financial_list = []
                 for _, row in recent.iterrows():
@@ -140,20 +147,42 @@ def get_financial_indicators(stock_code: str) -> str:
         except Exception as e:
             result["盈利能力指标获取失败"] = str(e)
 
-        # 3. 获取实时估值数据（PE、PB）
+        # 3. 获取实时估值数据（PE、PB）——从单股信息接口计算，避免拉全量行情
         try:
-            realtime_df = ak.stock_zh_a_spot_em()
-            if realtime_df is not None and not realtime_df.empty:
-                stock_row = realtime_df[realtime_df["代码"] == stock_code]
-                if not stock_row.empty:
-                    r = stock_row.iloc[0]
-                    result["实时估值"] = {
-                        "市盈率(TTM)": str(r.get("市盈率-动态", "N/A")),
-                        "市净率": str(r.get("市净率", "N/A")),
-                        "最新价": str(r.get("最新价", "N/A")),
-                        "成交量(手)": str(r.get("成交量", "N/A")),
-                        "成交额(元)": str(r.get("成交额", "N/A")),
-                    }
+            info_df = ak.stock_individual_info_em(symbol=stock_code)
+            if info_df is not None and not info_df.empty:
+                info_map = {}
+                if "item" in info_df.columns and "value" in info_df.columns:
+                    for _, row in info_df.iterrows():
+                        info_map[str(row["item"])] = str(row["value"])
+                # item 键为"最新"（非"最新价"）
+                current_price = float(info_map.get("最新", info_map.get("最新价", 0)))
+
+                # 从财务摘要计算 PE/PB
+                pe_val, pb_val = "N/A", "N/A"
+                if "财务摘要(近4期)" in result and current_price > 0:
+                    latest = result["财务摘要(近4期)"][0] if result["财务摘要(近4期)"] else {}
+                    eps_str = latest.get("基本每股收益", "N/A")
+                    bps_str = latest.get("每股净资产", "N/A")
+                    try:
+                        eps = float(str(eps_str).replace("元", "").strip())
+                        if eps > 0:
+                            pe_val = str(round(current_price / eps, 2))
+                    except Exception:
+                        pass
+                    try:
+                        bps = float(str(bps_str).replace("元", "").strip())
+                        if bps > 0:
+                            pb_val = str(round(current_price / bps, 2))
+                    except Exception:
+                        pass
+
+                result["实时估值"] = {
+                    "最新价": str(current_price),
+                    "市盈率(TTM估算)": pe_val,
+                    "市净率(估算)": pb_val,
+                    "总市值(亿)": str(round(float(info_map.get("总市值", 0)) / 1e8, 2)),
+                }
         except Exception as e:
             result["实时估值获取失败"] = str(e)
 

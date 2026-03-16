@@ -82,26 +82,24 @@ def get_stock_news(stock_code: str) -> str:
     except Exception as e:
         result["新闻获取错误"] = f"东方财富新闻获取失败: {str(e)}"
 
-    # 2. 获取股票公告
+    # 2. 获取股票公告（stock_notice_report 只支持 symbol='全部'，需按代码过滤）
     try:
-        # 获取最近30天的公告
         end_date = datetime.now().strftime("%Y%m%d")
-        start_date = (datetime.now() - timedelta(days=90)).strftime("%Y%m%d")
-
-        notice_df = ak.stock_notice_report(symbol=stock_code, date=end_date)
-        if notice_df is not None and not notice_df.empty:
+        all_notices_df = ak.stock_notice_report(symbol="全部", date=end_date)
+        if all_notices_df is not None and not all_notices_df.empty:
+            notice_df = all_notices_df[all_notices_df["代码"] == stock_code]
             notices = []
             for _, row in notice_df.head(10).iterrows():
                 notice = {
-                    "标题": _truncate_text(str(row.get("公告标题", row.get("title", ""))), 100),
-                    "公告类型": str(row.get("公告类型", row.get("type", ""))),
-                    "发布日期": _parse_date_str(str(row.get("公告日期", row.get("date", "")))),
+                    "标题": _truncate_text(str(row.get("公告标题", "")), 100),
+                    "公告类型": str(row.get("公告类型", "")),
+                    "发布日期": _parse_date_str(str(row.get("公告日期", ""))),
                 }
                 if notice["标题"] and notice["标题"] != "nan":
                     notices.append(notice)
             result["公司公告"] = notices
     except Exception as e:
-        result["公告获取备注"] = f"公告获取失败（可能无数据）: {str(e)}"
+        result["公告获取备注"] = f"公告获取失败: {str(e)}"
 
     # 3. 获取个股资金流向（反映市场关注度）
     try:

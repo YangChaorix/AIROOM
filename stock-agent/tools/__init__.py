@@ -17,3 +17,4 @@ __all__ = [
     "get_top_shareholders",
     "get_shareholder_changes",
 ]
+

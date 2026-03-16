@@ -6,8 +6,10 @@
 
 import json
 import re
+from datetime import datetime, timedelta
 from typing import Any
 
+import akshare as ak
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
@@ -57,22 +59,55 @@ async def run_policy_analysis(stock_code: str) -> dict[str, Any]:
     Returns:
         包含政策分析结果的字典
     """
-    # 获取新闻和公告数据（用于政策分析）
+    # 1. 个股新闻和公告
     news_data = get_stock_news.invoke({"stock_code": stock_code})
+
+    # 2. 同花顺全球财经快讯（宏观政策信号）
+    global_news_text = ""
+    try:
+        df = ak.stock_info_global_ths()
+        if df is not None and not df.empty:
+            items = []
+            for _, row in df.head(15).iterrows():
+                items.append(f"[{row.get('发布时间', '')}] {row.get('标题', '')}\n{str(row.get('内容', ''))[:200]}")
+            global_news_text = "\n\n".join(items)
+    except Exception:
+        global_news_text = "获取失败"
+
+    # 3. 央视新闻联播（国家政策权威来源，当天播出前无数据，往前最多找3天）
+    cctv_text = ""
+    try:
+        for delta in range(3):
+            date_str = (datetime.now() - timedelta(days=delta)).strftime("%Y%m%d")
+            df = ak.news_cctv(date=date_str)
+            if df is not None and not df.empty:
+                items = []
+                for _, row in df.iterrows():
+                    items.append(f"【{row.get('title', '')}】\n{str(row.get('content', ''))[:300]}")
+                cctv_text = f"（来源：{date_str} 新闻联播）\n\n" + "\n\n".join(items)
+                break
+    except Exception:
+        cctv_text = "获取失败"
 
     user_message = f"""
 请分析 A股 股票 {stock_code} 所在行业的政策面情况：
 
-**近期相关新闻和公告（用于判断政策动向）：**
+**一、个股近期新闻和公告：**
 {news_data}
 
-请重点关注：
-1. 新闻中是否有政府政策、监管文件、行业规划的相关报道
-2. 该行业是否处于国家重点支持领域（如新能源、AI、半导体、医疗、消费升级等）
-3. 近6个月内是否有新政策出台（利好或利空）
-4. 行业监管环境是否友好
+**二、同花顺全球财经快讯（宏观政策信号）：**
+{global_news_text}
 
-注意：如果新闻中政策信息不足，请基于行业基本情况给出合理判断，并说明依据。
+**三、央视新闻联播（国家政策权威来源）：**
+{cctv_text}
+
+请综合以上三类信息，重点关注：
+1. 央视/政府文件中是否有涉及该行业的政策方向（五年规划、产业政策、监管动向）
+2. 全球财经快讯中是否有影响该行业的宏观政策（财政、货币、产业补贴等）
+3. 个股新闻中是否有具体政策利好/利空
+4. 行业监管环境整体是否友好
+
+注意：如果信息中政策信号不足，请基于行业基本情况给出合理判断并说明依据。
 """
 
     llm = ChatOpenAI(
@@ -103,7 +138,7 @@ async def run_policy_analysis(stock_code: str) -> dict[str, Any]:
     return {
         "agent": "policy_agent",
         "stock_code": stock_code,
-        "raw_data": {"news_data": news_data},
+        "raw_data": {"news_data": news_data, "global_news": global_news_text, "cctv_news": cctv_text},
         "analysis": analysis_result,
         "score": analysis_result.get("政策评分", 50),
     }

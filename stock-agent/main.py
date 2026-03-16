@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Optional
 
 from config.settings import settings
+from graph.daily_workflow import run_daily_scan
 from graph.workflow import run_batch_analysis, run_stock_analysis
 
 
@@ -202,27 +203,31 @@ def parse_args() -> argparse.Namespace:
         description="A股选股分析系统 - 7维度LangGraph多Agent架构",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-7个选股条件：
-  条件一：新政策支持行业（权重20%）
-  条件二：行业龙头企业（权重15%）
-  条件三：股东结构私募+个人>60%（权重15%）
-  条件四：产品涨价+供需不平衡（权重20%）
-  条件五：未来半年~2年上涨趋势（权重10%）
-  条件六：转折催化剂事件（权重10%）
-  条件七：技术量能突破（权重10%）
-
 使用示例：
-  python main.py 000001                           # 分析平安银行
-  python main.py 000001 600519                    # 分析平安银行和贵州茅台
+  python main.py 000001                              # 分析指定股票
+  python main.py 000001 600519                       # 分析多只股票
   python main.py --output report.json 000001 600519  # 保存结果到文件
-  python main.py --concurrent 2 000001 600519 300750  # 最多2个并发
+  python main.py --auto                              # 每日自动选股（执行一次）
+  python main.py --schedule                          # 启动定时任务（每天15:30自动运行）
         """,
     )
 
     parser.add_argument(
         "stock_codes",
-        nargs="+",
-        help="A股股票代码，可以输入多个（如：000001 600519 300750）",
+        nargs="*",
+        help="A股股票代码（指定分析模式）",
+    )
+
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="每日自动选股模式：从今日涨幅榜出发，经新闻匹配+AI预筛后进行7维度分析",
+    )
+
+    parser.add_argument(
+        "--schedule",
+        action="store_true",
+        help="启动定时任务模式，每天收盘后（15:30）自动触发选股分析",
     )
 
     parser.add_argument(
@@ -236,7 +241,7 @@ def parse_args() -> argparse.Namespace:
         "--concurrent", "-c",
         type=int,
         default=2,
-        help="批量分析时的最大并发数（默认：2，避免API限流）",
+        help="批量分析时的最大并发数（默认：2）",
     )
 
     parser.add_argument(
@@ -246,6 +251,63 @@ def parse_args() -> argparse.Namespace:
     )
 
     return parser.parse_args()
+
+
+def print_daily_report(daily_result: dict) -> None:
+    """打印每日自动选股报告"""
+    print(f"\n{'='*70}")
+    print(f"  每日自动选股报告  {daily_result.get('date', '')}")
+    print(f"{'='*70}")
+    print(f"  涨幅榜原始数量：{daily_result.get('raw_gainers_count', 0)}")
+    print(f"  Python过滤后：{daily_result.get('filtered_count', 0)}")
+    hot = daily_result.get("hot_industries", {})
+    if hot:
+        print(f"  今日热点行业：{', '.join(hot.keys())}")
+    print(f"  进入深度分析：{daily_result.get('top_codes', [])}")
+
+    results = daily_result.get("analysis_results", [])
+    for result in results:
+        print_analysis_report(result)
+
+    if len(results) > 1:
+        print_batch_summary(results)
+
+
+async def run_auto_once(args: argparse.Namespace) -> None:
+    """执行一次每日自动选股"""
+    daily_result = await run_daily_scan(
+        top_n_gainers=50,
+        final_top_n=10,
+        max_concurrent=args.concurrent,
+    )
+
+    if not args.no_print:
+        print_daily_report(daily_result)
+
+    if args.output:
+        save_results_to_json(daily_result.get("analysis_results", []), args.output)
+    elif args.no_print:
+        default_output = f"daily_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        save_results_to_json(daily_result.get("analysis_results", []), default_output)
+
+
+def start_scheduler(args: argparse.Namespace) -> None:
+    """启动定时任务，每天15:30自动触发选股"""
+    from apscheduler.schedulers.blocking import BlockingScheduler
+
+    scheduler = BlockingScheduler(timezone="Asia/Shanghai")
+
+    def job():
+        print(f"\n[定时任务] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 触发每日选股...")
+        asyncio.run(run_auto_once(args))
+
+    scheduler.add_job(job, "cron", hour=15, minute=30, day_of_week="mon-fri")
+    print("定时任务已启动，每个交易日 15:30 自动运行选股分析")
+    print("按 Ctrl+C 停止\n")
+    try:
+        scheduler.start()
+    except (KeyboardInterrupt, SystemExit):
+        print("定时任务已停止")
 
 
 async def main() -> None:
@@ -260,6 +322,22 @@ async def main() -> None:
         print("\n请按以下步骤配置：")
         print("1. 复制 .env.example 为 .env 文件")
         print("2. 在 .env 文件中填写 DEEPSEEK_API_KEY")
+        sys.exit(1)
+
+    # ── 定时任务模式 ──────────────────────────────────────────
+    if args.schedule:
+        start_scheduler(args)
+        return
+
+    # ── 每日自动选股模式 ──────────────────────────────────────
+    if args.auto:
+        await run_auto_once(args)
+        return
+
+    # ── 指定股票分析模式 ──────────────────────────────────────
+    if not args.stock_codes:
+        print("请提供股票代码，或使用 --auto / --schedule 模式")
+        print("示例：python main.py 600519")
         sys.exit(1)
 
     stock_codes = list(dict.fromkeys(args.stock_codes))  # 保持顺序去重
