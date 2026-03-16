@@ -17,6 +17,7 @@ from typing import Optional
 
 from config.settings import settings
 from graph.daily_workflow import run_daily_scan
+from graph.event_workflow import run_event_pipeline, run_review_only
 from graph.workflow import run_batch_analysis, run_stock_analysis
 
 
@@ -250,7 +251,82 @@ def parse_args() -> argparse.Namespace:
         help="不打印详细报告（仅保存到文件，需配合 --output 使用）",
     )
 
+    # ── 事件驱动新模式 ──────────────────────────────────────
+    parser.add_argument(
+        "--event",
+        action="store_true",
+        help="事件驱动模式：Agent1触发扫描 + Agent2企业精筛（早晨09:15使用）",
+    )
+
+    parser.add_argument(
+        "--trigger-only",
+        action="store_true",
+        dest="trigger_only",
+        help="仅运行 Agent1 事件触发检测（不进行精筛）",
+    )
+
+    parser.add_argument(
+        "--review",
+        action="store_true",
+        help="运行 Agent3 收盘复盘（15:35后使用）",
+    )
+
     return parser.parse_args()
+
+
+def print_event_report(state: dict) -> None:
+    """打印事件驱动流水线报告"""
+    run_mode = state.get("run_mode", "full")
+    print(f"\n{'='*70}")
+    print(f"  事件驱动选股报告  {state.get('date', '')}  [模式: {run_mode}]")
+    print(f"{'='*70}")
+
+    trigger = state.get("trigger_result") or {}
+    if trigger:
+        triggered = trigger.get("triggered", False)
+        print(f"\n【Agent 1 触发结果】{'✓ 已触发' if triggered else '✗ 未触发'}")
+        if triggered:
+            print(f"  命中条件：{trigger.get('hit_conditions', [])}")
+            print(f"  受益行业：{trigger.get('affected_industries', [])}")
+            print(f"  受益公司：{trigger.get('affected_companies', [])}")
+            print(f"  事件摘要：{trigger.get('trigger_summary', '')}")
+
+    screener = state.get("screener_result") or {}
+    if screener and screener.get("top20"):
+        top20 = screener["top20"]
+        print(f"\n【Agent 2 精筛结果】共评分 {screener.get('scored_count', len(top20))} 只，Top {len(top20)}：")
+        print(f"  {'排名':<4}{'代码':<8}{'名称':<10}{'总分':<6}{'D1':<4}{'D2':<4}{'D3':<4}{'D4':<4}{'D5':<4}{'D6':<4}{'建议'}")
+        print(f"  {'─'*68}")
+        for i, s in enumerate(top20, 1):
+            dims = s.get("维度得分", {})
+            print(
+                f"  {i:<4}{s['代码']:<8}{s['名称']:<10}{s['总分']:<6}"
+                f"{dims.get('D1_行业龙头', 0):<4}{dims.get('D2_受益程度', 0):<4}"
+                f"{dims.get('D3_股东结构', 0):<4}{dims.get('D4_中长期趋势', 0):<4}"
+                f"{dims.get('D5_技术量能', 0):<4}{dims.get('D6_估值合理性', 0):<4}"
+                f"{s.get('建议操作', '')}"
+            )
+
+    review = state.get("review_result") or {}
+    if review and review.get("llm_review"):
+        llm = review["llm_review"]
+        print(f"\n【Agent 3 复盘结果】")
+        print(f"  市场情绪：{llm.get('market_sentiment', 'N/A')}")
+        print(f"  市场总结：{llm.get('market_summary', '')[:100]}")
+        v = review.get("push_verification", {})
+        if v.get("total_pushed", 0) > 0:
+            print(f"  命中率：{v.get('hit_count', 0)}/{v.get('total_pushed', 0)} = {v.get('hit_rate_pct', 0)}%")
+        tomorrow = llm.get("tomorrow_focus", [])
+        if tomorrow:
+            print(f"  明日关注：{', '.join(tomorrow[:3])}")
+
+    errors = state.get("errors", [])
+    if errors:
+        print(f"\n【警告】{len(errors)} 个错误：")
+        for err in errors[:3]:
+            print(f"  ✗ {str(err)[:100]}")
+
+    print(f"\n{'='*70}\n")
 
 
 def print_daily_report(daily_result: dict) -> None:
@@ -271,6 +347,31 @@ def print_daily_report(daily_result: dict) -> None:
 
     if len(results) > 1:
         print_batch_summary(results)
+
+
+async def run_event_once(args: argparse.Namespace) -> None:
+    """执行一次事件驱动流水线（Agent1 触发 + Agent2 精筛）"""
+    state = await run_event_pipeline("full")
+    if not args.no_print:
+        print_event_report(state)
+    if args.output:
+        save_results_to_json(
+            state.get("screener_result", {}).get("top20", []), args.output
+        )
+
+
+async def run_trigger_once(args: argparse.Namespace) -> None:
+    """仅执行 Agent1 触发检测"""
+    state = await run_event_pipeline("trigger_only")
+    if not args.no_print:
+        print_event_report(state)
+
+
+async def run_review_once(args: argparse.Namespace) -> None:
+    """执行 Agent3 收盘复盘"""
+    state = await run_event_pipeline("review_only")
+    if not args.no_print:
+        print_event_report(state)
 
 
 async def run_auto_once(args: argparse.Namespace) -> None:
@@ -301,7 +402,17 @@ def start_scheduler(args: argparse.Namespace) -> None:
         print(f"\n[定时任务] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 触发每日选股...")
         asyncio.run(run_auto_once(args))
 
+    def event_job():
+        print(f"\n[定时任务] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 触发事件驱动选股...")
+        asyncio.run(run_event_once(args))
+
+    def review_job():
+        print(f"\n[定时任务] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 触发收盘复盘...")
+        asyncio.run(run_review_once(args))
+
     scheduler.add_job(job, "cron", hour=15, minute=30, day_of_week="mon-fri")
+    scheduler.add_job(event_job, "cron", hour=9, minute=15, day_of_week="mon-fri")
+    scheduler.add_job(review_job, "cron", hour=15, minute=35, day_of_week="mon-fri")
     print("定时任务已启动，每个交易日 15:30 自动运行选股分析")
     print("按 Ctrl+C 停止\n")
     try:
@@ -327,6 +438,19 @@ async def main() -> None:
     # ── 定时任务模式 ──────────────────────────────────────────
     if args.schedule:
         start_scheduler(args)
+        return
+
+    # ── 事件驱动模式（新） ────────────────────────────────────
+    if args.event:
+        await run_event_once(args)
+        return
+
+    if args.trigger_only:
+        await run_trigger_once(args)
+        return
+
+    if args.review:
+        await run_review_once(args)
         return
 
     # ── 每日自动选股模式 ──────────────────────────────────────
