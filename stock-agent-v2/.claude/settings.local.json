@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/yangchao/workspace/ai/AIROOM/**)",
+      "Bash(*)",
+      "Bash(/Users/yangchao/workspace/ai/AIROOM/stock-agent/.venv/bin/python -c \"\nimport sys\nsys.path.insert\\(0, '.'\\)\nfrom config.settings import settings\nsettings.validate\\(\\)\nprint\\('配置加载 OK'\\)\nprint\\(f'  API Key: {settings.deepseek.api_key[:8]}...'\\)\nprint\\(f'  Model: {settings.deepseek.model_name}'\\)\nprint\\(f'  Data dir: {settings.agent.data_dir}'\\)\n\")",
+      "Bash(/Users/yangchao/workspace/ai/AIROOM/stock-agent/.venv/bin/python -c \"\nimport sys; sys.path.insert\\(0, '.'\\)\nfrom tools.technical_tools import calc_volume_breakthrough\nr = calc_volume_breakthrough\\('000001'\\)\nprint\\('keys:', list\\(r.keys\\(\\)\\)\\)\nprint\\('d5_score:', r.get\\('d5_score'\\)\\)\nprint\\('d5_desc:', r.get\\('d5_desc'\\)\\)\n\" 2>&1)",
+      "Bash(/Users/yangchao/workspace/ai/AIROOM/stock-agent/.venv/bin/python -c \"\nimport sys; sys.path.insert\\(0, '.'\\)\n\nfrom tools.shareholder_tools import get_top_shareholders\ns = get_top_shareholders\\('000001'\\)\ncs = s.get\\('筹码结构分析', {}\\)\nprint\\(f'平安银行: 私募+个人={cs.get\\(\\\\\"私募+个人持股\\(%\\)\\\\\",\\\\\"N/A\\\\\"\\)}%, D3得分={cs.get\\(\\\\\"D3得分\\\\\",\\\\\"?\\\\\"\\)}'\\)\n\nfrom tools.market_screener import get_market_movers\nm = get_market_movers\\(50\\)\nov = m.get\\('市场概况', {}\\)\nprint\\(f'市场概况: 上涨={ov.get\\(\\\\\"上涨家数\\\\\"\\)} 下跌={ov.get\\(\\\\\"下跌家数\\\\\"\\)} 情绪={ov.get\\(\\\\\"市场情绪\\\\\"\\)}'\\)\ntop3 = m.get\\('涨幅前50', []\\)[:3]\nfor st in top3:\n    print\\(f'  {st[\\\\\"名称\\\\\"]}\\({st[\\\\\"代码\\\\\"]}\\): +{st[\\\\\"涨跌幅\\(%\\)\\\\\"]:.2f}%'\\)\n\" 2>&1)",
+      "Bash(/Users/yangchao/workspace/ai/AIROOM/stock-agent/.venv/bin/python -c \"\nimport langgraph; print\\('langgraph:', langgraph.__version__\\)\nimport langchain_openai; print\\('langchain-openai: OK'\\)\nimport apscheduler; print\\('apscheduler: OK'\\)\n\" 2>&1)",
+      "Bash(/Users/yangchao/workspace/ai/AIROOM/stock-agent/.venv/bin/python main.py --trigger-only 2>&1 | head -60)"
+    ]
+  }
+}
