@@ -36,7 +36,7 @@ a{color:inherit;text-decoration:none}
 .sb-footer{padding:12px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);text-align:center}
 
 /* ── Main ── */
-#main{margin-left:var(--sidebar);flex:1;display:flex;flex-direction:column;min-height:100vh;overflow:hidden}
+#main{margin-left:var(--sidebar);flex:1;display:flex;flex-direction:column;height:100vh;overflow:hidden}
 
 /* ── Topbar ── */
 #topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--bg2);border-bottom:1px solid var(--border);gap:16px;flex-shrink:0}
@@ -51,8 +51,15 @@ select:focus,input[type=date]:focus{border-color:var(--green)}
 .dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}.dot-red{background:var(--red)}.dot-yellow{background:var(--yellow)}
 
 /* ── Content ── */
-#content{flex:1;overflow-y:auto;padding:24px}
-.page{display:none}.page.active{display:block}
+#content{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.page{display:none;height:100%}
+.page.active{display:flex;flex-direction:column}
+/* 默认页面内容区可滚动（dashboard/picks/triggers/review/events/prompts） */
+.page-scroll{flex:1;overflow-y:auto;padding:24px}
+/* 固定视口页面（news/logs）：header+filter固定，list内部滚动，分页钉底 */
+.page-fixed{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:24px 24px 0}
+.page-fixed .list-area{flex:1;overflow-y:auto;min-height:0}
+.page-fixed .pagination{flex-shrink:0;padding:12px 0 16px}
 
 /* ── Grid / Cards ── */
 .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
@@ -217,6 +224,7 @@ tr:hover td{background:rgba(26,35,53,.5)}
     <div class="nav-item" data-page="logs"><span class="icon">📜</span><span class="label">运行日志</span></div>
     <div class="nav-item" data-page="events"><span class="icon">🔁</span><span class="label">事件去重</span></div>
     <div class="nav-item" data-page="prompts"><span class="icon">🧠</span><span class="label">提示词管理</span></div>
+    <div class="nav-item" data-page="config"><span class="icon">⚙️</span><span class="label">系统配置</span></div>
   </nav>
   <div class="sb-footer">Stock Agent v3</div>
 </aside>
@@ -228,6 +236,7 @@ tr:hover td{background:rgba(26,35,53,.5)}
     <div class="topbar-title" id="page-title">控制台</div>
     <div class="topbar-controls">
       <select id="date-selector" onchange="onDateChange()"><option value="">加载中...</option></select>
+      <button id="run-btn" class="btn btn-primary" onclick="triggerAnalysis()">▶ 触发分析</button>
       <button class="btn btn-ghost" onclick="refreshCurrent()">↻ 刷新</button>
     </div>
   </div>
@@ -237,121 +246,162 @@ tr:hover td{background:rgba(26,35,53,.5)}
 
     <!-- ════ DASHBOARD ════ -->
     <div class="page active" id="page-dashboard">
-      <div id="dash-stats" class="grid-4" style="margin-bottom:16px"></div>
-      <div class="grid-2" style="margin-bottom:16px">
-        <div class="card">
-          <div class="card-title">📈 近期触发事件数量</div>
-          <div class="chart-container"><canvas id="chart-triggers"></canvas></div>
+      <div class="page-scroll">
+        <div id="dash-stats" class="grid-4" style="margin-bottom:16px"></div>
+        <div class="grid-2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="card-title">📈 近期触发事件数量</div>
+            <div class="chart-container"><canvas id="chart-triggers"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">📰 今日新闻来源分布</div>
+            <div class="chart-container"><canvas id="chart-news"></canvas></div>
+          </div>
         </div>
-        <div class="card">
-          <div class="card-title">📰 今日新闻来源分布</div>
-          <div class="chart-container"><canvas id="chart-news"></canvas></div>
-        </div>
-      </div>
-      <div class="grid-2">
-        <div class="card">
-          <div class="card-title">🏆 今日精选（前5）</div>
-          <div id="dash-stocks"></div>
-        </div>
-        <div class="card">
-          <div class="card-title">📋 最近运行记录</div>
-          <div id="dash-runs"></div>
+        <div class="grid-2">
+          <div class="card" id="dash-stocks-card">
+            <div class="card-title">🏆 今日精选（前10）</div>
+            <div id="dash-stocks"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">📋 最近运行记录</div>
+            <div id="dash-runs"></div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- ════ PICKS ════ -->
     <div class="page" id="page-picks">
-      <div class="section-header">
-        <div class="section-title">🏆 精选股票 · <span id="picks-date-label" class="badge badge-green">-</span></div>
-        <div style="font-size:12px;color:var(--text2)">6维度评分系统（满分18分）</div>
+      <div class="page-scroll">
+        <div class="section-header">
+          <div class="section-title">🏆 精选股票 · <span id="picks-date-label" class="badge badge-green">-</span></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:12px;color:var(--text2)">分析批次：</span>
+            <select id="picks-run-sel" style="font-size:12px;padding:2px 6px" onchange="onPicksRunChange()">
+              <option value="">加载中...</option>
+            </select>
+          </div>
+        </div>
+        <div id="picks-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
       </div>
-      <div id="picks-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
     </div>
 
     <!-- ════ TRIGGERS ════ -->
     <div class="page" id="page-triggers">
-      <div class="section-header">
-        <div class="section-title">⚡ 触发事件 · <span id="triggers-date-label" class="badge badge-yellow">-</span></div>
-        <div id="triggers-count" style="font-size:12px;color:var(--text2)"></div>
+      <div class="page-scroll">
+        <div class="section-header">
+          <div class="section-title">⚡ 触发事件 · <span id="triggers-date-label" class="badge badge-yellow">-</span></div>
+          <div id="triggers-count" style="font-size:12px;color:var(--text2)"></div>
+        </div>
+        <div id="triggers-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
       </div>
-      <div id="triggers-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
     </div>
 
     <!-- ════ REVIEW ════ -->
     <div class="page" id="page-review">
-      <div class="section-header">
-        <div class="section-title">📋 市场复盘</div>
-        <select id="review-date-sel" style="margin:0" onchange="loadReview(this.value)"><option value="">选择日期</option></select>
-      </div>
-      <div id="review-stats" class="grid-4" style="margin-bottom:16px"></div>
-      <div class="card">
-        <div class="card-title">📄 复盘报告</div>
-        <div id="review-content" class="md-content" style="margin-top:8px"></div>
+      <div class="page-scroll">
+        <div class="section-header">
+          <div class="section-title">📋 市场复盘</div>
+          <select id="review-date-sel" style="margin:0" onchange="loadReview(this.value)"><option value="">选择日期</option></select>
+        </div>
+        <div id="review-stats" class="grid-4" style="margin-bottom:16px"></div>
+        <div class="card">
+          <div class="card-title">📄 复盘报告</div>
+          <div id="review-content" class="md-content" style="margin-top:8px"></div>
+        </div>
       </div>
     </div>
 
     <!-- ════ NEWS ════ -->
     <div class="page" id="page-news">
-      <div class="section-header">
-        <div class="section-title">📰 新闻动态</div>
-        <div id="news-total" style="font-size:12px;color:var(--text2)"></div>
+      <div class="page-fixed">
+        <div class="section-header">
+          <div class="section-title">📰 新闻动态</div>
+          <div id="news-total" style="font-size:12px;color:var(--text2)"></div>
+        </div>
+        <div class="filters">
+          <input id="news-search" type="text" placeholder="🔍 搜索标题/内容..."
+            style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 10px;font-size:13px;width:180px"
+            oninput="onNewsSearch()">
+          <select id="news-source-sel" onchange="loadNews(1)"><option value="">全部来源</option></select>
+          <select id="news-priority-sel" onchange="loadNews(1)">
+            <option value="">全部优先级</option>
+            <option value="high">HIGH 高</option>
+            <option value="medium">MEDIUM 中</option>
+            <option value="low">LOW 低</option>
+          </select>
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+            发布时间
+            <input type="time" id="news-time-start" value="00:00" onchange="loadNews(1)"
+              style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font-size:12px">
+            <span>-</span>
+            <input type="time" id="news-time-end" value="23:59" onchange="loadNews(1)"
+              style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font-size:12px">
+          </div>
+          <select id="news-limit-sel" onchange="loadNews(1)">
+            <option value="30">30 条</option>
+            <option value="50" selected>50 条</option>
+            <option value="100">100 条</option>
+          </select>
+        </div>
+        <div id="news-list" class="list-area"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+        <div class="pagination" id="news-pagination"></div>
       </div>
-      <div class="filters">
-        <select id="news-source-sel" onchange="loadNews(1)"><option value="">全部来源</option></select>
-        <select id="news-priority-sel" onchange="loadNews(1)">
-          <option value="">全部优先级</option>
-          <option value="high">HIGH 高</option>
-          <option value="medium">MEDIUM 中</option>
-          <option value="low">LOW 低</option>
-        </select>
-        <select id="news-limit-sel" onchange="loadNews(1)">
-          <option value="30">30 条</option>
-          <option value="50" selected>50 条</option>
-          <option value="100">100 条</option>
-        </select>
-      </div>
-      <div id="news-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
-      <div class="pagination" id="news-pagination"></div>
     </div>
 
     <!-- ════ LOGS ════ -->
     <div class="page" id="page-logs">
-      <div class="section-header">
-        <div class="section-title">📜 运行日志</div>
-        <div id="logs-total" style="font-size:12px;color:var(--text2)"></div>
+      <div class="page-fixed">
+        <div class="section-header">
+          <div class="section-title">📜 运行日志</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div id="logs-total" style="font-size:12px;color:var(--text2)"></div>
+            <select id="logs-limit-sel" onchange="loadLogs(1)" style="font-size:12px">
+              <option value="10" selected>10 条/页</option>
+              <option value="20">20 条/页</option>
+              <option value="50">50 条/页</option>
+            </select>
+          </div>
+        </div>
+        <div class="list-area">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>日期</th><th>模式</th><th>开始时间</th><th>结束时间</th><th>耗时</th><th>状态</th><th>错误信息</th>
+              </tr></thead>
+              <tbody id="logs-body"><tr><td colspan="7"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="pagination" id="logs-pagination"></div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>日期</th><th>模式</th><th>开始时间</th><th>结束时间</th><th>耗时</th><th>状态</th><th>错误信息</th>
-          </tr></thead>
-          <tbody id="logs-body"><tr><td colspan="7"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
-        </table>
-      </div>
-      <div class="pagination" id="logs-pagination"></div>
     </div>
 
     <!-- ════ EVENTS ════ -->
     <div class="page" id="page-events">
-      <div class="section-header">
-        <div class="section-title">🔁 事件去重历史</div>
-        <div id="events-total" style="font-size:12px;color:var(--text2)"></div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>类型</th><th>首次出现</th><th>最近出现</th><th>事件摘要</th>
-          </tr></thead>
-          <tbody id="events-body"><tr><td colspan="4"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
-        </table>
+      <div class="page-scroll">
+        <div class="section-header">
+          <div class="section-title">🔁 事件去重历史</div>
+          <div id="events-total" style="font-size:12px;color:var(--text2)"></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>类型</th><th>出现次数</th><th>首次出现</th><th>最近出现</th><th>事件摘要</th>
+            </tr></thead>
+            <tbody id="events-body"><tr><td colspan="5"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
     <!-- ════ PROMPTS ════ -->
     <div class="page" id="page-prompts">
-      <div class="section-header"><div class="section-title">🧠 提示词管理</div></div>
-      <div id="prompts-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+      <div class="page-scroll">
+        <div class="section-header"><div class="section-title">🧠 提示词管理</div></div>
+        <div id="prompts-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+      </div>
       <!-- Prompt detail modal -->
       <div id="prompt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:none;align-items:center;justify-content:center">
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;width:min(800px,95vw);max-height:80vh;display:flex;flex-direction:column">
@@ -363,6 +413,17 @@ tr:hover td{background:rgba(26,35,53,.5)}
             <pre id="modal-content" style="background:var(--bg3);padding:16px;border-radius:8px;font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6;font-family:'Cascadia Code',Consolas,monospace"></pre>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ════ CONFIG ════ -->
+    <div class="page" id="page-config">
+      <div class="page-scroll">
+        <div class="section-header">
+          <div class="section-title">⚙️ 系统配置</div>
+          <div style="font-size:12px;color:var(--text2)">修改后点击保存立即生效</div>
+        </div>
+        <div id="config-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
       </div>
     </div>
 
@@ -386,7 +447,7 @@ const S = {
 const PAGE_TITLES = {
   dashboard:'控制台', picks:'精选股票', triggers:'触发事件',
   review:'市场复盘', news:'新闻动态', logs:'运行日志',
-  events:'事件去重历史', prompts:'提示词管理',
+  events:'事件去重历史', prompts:'提示词管理', config:'系统配置',
 };
 
 // ═══════════════════════════════════════════════════════
@@ -399,6 +460,18 @@ async function init() {
   });
   await loadDates();
   renderPage('dashboard');
+  // 若服务端仍在运行，恢复按钮 running 状态
+  try {
+    const d = await api('/api/run/status');
+    if (d.running) {
+      const btn = document.getElementById('run-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ 运行中...';
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-ghost');
+      _pollRunStatus();
+    }
+  } catch(e) {}
 }
 
 async function loadDates() {
@@ -418,6 +491,56 @@ function onDateChange() {
 }
 
 function refreshCurrent() { renderPage(S.page); }
+
+// ═══════════════════════════════════════════════════════
+// MANUAL TRIGGER
+// ═══════════════════════════════════════════════════════
+let _runPollTimer = null;
+
+async function triggerAnalysis() {
+  const btn = document.getElementById('run-btn');
+  if (btn.disabled) return;
+  try {
+    const r = await fetch('/api/run/trigger', {method: 'POST'});
+    if (r.status === 409) { alert('分析正在运行中，请稍候...'); return; }
+    if (!r.ok) { const d = await r.json(); alert('启动失败: ' + (d.detail||r.status)); return; }
+    btn.disabled = true;
+    btn.textContent = '⏳ 运行中...';
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-ghost');
+    _pollRunStatus();
+  } catch(e) { alert('请求失败: ' + e); }
+}
+
+function _pollRunStatus() {
+  if (_runPollTimer) clearTimeout(_runPollTimer);
+  _runPollTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/run/status');
+      const d = await r.json();
+      const btn = document.getElementById('run-btn');
+      if (d.running) {
+        _pollRunStatus();
+      } else {
+        btn.disabled = false;
+        btn.classList.add('btn-primary');
+        btn.classList.remove('btn-ghost');
+        if (d.status === 'success') {
+          btn.textContent = '✓ 分析完成';
+          setTimeout(() => { btn.textContent = '▶ 触发分析'; }, 3000);
+          await loadDates();
+          renderPage(S.page);
+        } else if (d.status === 'error') {
+          btn.textContent = '✗ 运行失败';
+          setTimeout(() => { btn.textContent = '▶ 触发分析'; }, 4000);
+          alert('分析失败:\n' + (d.error || '未知错误'));
+        } else {
+          btn.textContent = '▶ 触发分析';
+        }
+      }
+    } catch(e) { _pollRunStatus(); }
+  }, 3000);
+}
 
 // ═══════════════════════════════════════════════════════
 // NAVIGATION
@@ -442,6 +565,7 @@ function renderPage(page) {
     case 'logs':      loadLogs(1); break;
     case 'events':    loadEvents(); break;
     case 'prompts':   loadPrompts(); break;
+    case 'config':    loadConfig(); break;
   }
 }
 
@@ -513,7 +637,12 @@ async function loadDashboard() {
 }
 
 async function loadDashStocks() {
-  const d = await api(`/api/screener-stocks?date=${S.date}&limit=5`);
+  const cfg = await api('/api/config');
+  const limitCfg = (cfg.items || []).find(c => c.key === 'dashboard_picks_limit');
+  const limit = limitCfg ? parseInt(limitCfg.value) || 10 : 10;
+  const titleEl = document.querySelector('#dash-stocks-card .card-title');
+  if (titleEl) titleEl.textContent = `🏆 今日精选（前${limit}）`;
+  const d = await api(`/api/screener-stocks?date=${S.date}&limit=${limit}`);
   const stocks = d.items || [];
   if (!stocks.length) { document.getElementById('dash-stocks').innerHTML = '<div class="empty" style="padding:20px">暂无精选股票</div>'; return; }
   document.getElementById('dash-stocks').innerHTML = stocks.map(s => `
@@ -593,9 +722,33 @@ function drawDoughnutChart(canvasId, data) {
 async function loadPicks() {
   document.getElementById('picks-date-label').textContent = S.date || '-';
   document.getElementById('picks-list').innerHTML = loading();
-  const d = await api(`/api/screener-stocks?date=${S.date}`);
+
+  // 加载批次列表
+  const runsData = await api(`/api/screener-stocks/runs?date=${S.date}`);
+  const runs = runsData.runs || [];
+  const sel = document.getElementById('picks-run-sel');
+  if (!runs.length) {
+    sel.innerHTML = '<option value="">无数据</option>';
+    document.getElementById('picks-list').innerHTML = empty('该日期暂无精选股票数据');
+    return;
+  }
+  sel.innerHTML = runs.map((r, i) =>
+    `<option value="${r}">${r.substring(11, 16)} 第${runs.length - i}次分析</option>`
+  ).join('');
+  sel.value = runs[0]; // 默认最新
+  await _loadPicksByRunId(runs[0]);
+}
+
+async function onPicksRunChange() {
+  const runId = document.getElementById('picks-run-sel').value;
+  if (runId) await _loadPicksByRunId(runId);
+}
+
+async function _loadPicksByRunId(runId) {
+  document.getElementById('picks-list').innerHTML = loading();
+  const d = await api(`/api/screener-stocks?date=${S.date}&run_id=${encodeURIComponent(runId)}`);
   const stocks = d.items || [];
-  if (!stocks.length) { document.getElementById('picks-list').innerHTML = empty('该日期暂无精选股票数据'); return; }
+  if (!stocks.length) { document.getElementById('picks-list').innerHTML = empty('该批次暂无数据'); return; }
   document.getElementById('picks-list').innerHTML = stocks.map(s => renderStockCard(s)).join('');
 }
 
@@ -749,6 +902,12 @@ async function loadReview(date) {
 // ═══════════════════════════════════════════════════════
 let newsTotal = 0;
 
+let _newsSearchTimer = null;
+function onNewsSearch() {
+  clearTimeout(_newsSearchTimer);
+  _newsSearchTimer = setTimeout(() => loadNews(1), 400);
+}
+
 async function loadNews(page) {
   S.newsPage = page;
   const source = document.getElementById('news-source-sel').value;
@@ -767,9 +926,15 @@ async function loadNews(page) {
       (srcs.sources || []).map(s => `<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
   }
 
+  const timeStart = document.getElementById('news-time-start').value;
+  const timeEnd = document.getElementById('news-time-end').value;
+  const q = document.getElementById('news-search').value.trim();
   let url = `/api/news?date=${S.date}&limit=${limit}&offset=${offset}`;
   if (source) url += `&source=${encodeURIComponent(source)}`;
   if (priority) url += `&priority=${priority}`;
+  if (timeStart) url += `&time_start=${timeStart}`;
+  if (timeEnd) url += `&time_end=${timeEnd}`;
+  if (q) url += `&q=${encodeURIComponent(q)}`;
 
   const d = await api(url);
   const items = d.items || [];
@@ -810,7 +975,7 @@ function toggleNews(id) {
 // ═══════════════════════════════════════════════════════
 async function loadLogs(page) {
   S.logsPage = page;
-  const limit = 30;
+  const limit = parseInt(document.getElementById('logs-limit-sel')?.value || '10');
   const offset = (page - 1) * limit;
   const d = await api(`/api/run-logs?limit=${limit}&offset=${offset}`);
   const items = d.items || [];
@@ -843,10 +1008,11 @@ async function loadEvents() {
   document.getElementById('events-total').textContent = `共 ${items.length} 条去重记录`;
   document.getElementById('events-body').innerHTML = items.map(e => `<tr>
     <td><span class="badge badge-purple">${e.event_type || '-'}</span></td>
-    <td style="color:var(--text2)">${e.first_seen || '-'}</td>
-    <td style="color:var(--text2)">${e.last_seen || '-'}</td>
+    <td style="text-align:center"><span class="badge badge-blue">${e.seen_count ?? 1}</span></td>
+    <td style="color:var(--text2);white-space:nowrap">${e.first_seen || '-'}</td>
+    <td style="color:var(--text2);white-space:nowrap">${e.last_seen || '-'}</td>
     <td style="color:var(--text);max-width:400px">${e.summary || '-'}</td>
-  </tr>`).join('') || '<tr><td colspan="4"><div class="empty">暂无事件记录</div></td></tr>';
+  </tr>`).join('') || '<tr><td colspan="5"><div class="empty">暂无事件记录</div></td></tr>';
 }
 
 // ═══════════════════════════════════════════════════════
@@ -909,6 +1075,59 @@ function closeModal() {
 }
 
 // ═══════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════
+async function loadConfig() {
+  document.getElementById('config-list').innerHTML = loading();
+  const d = await api('/api/config');
+  const items = d.items || [];
+  if (!items.length) { document.getElementById('config-list').innerHTML = empty('暂无配置项'); return; }
+  document.getElementById('config-list').innerHTML = `
+    <div class="card" style="max-width:640px">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:8px 12px;font-size:12px;color:var(--text3);font-weight:500">配置项</th>
+          <th style="text-align:left;padding:8px 12px;font-size:12px;color:var(--text3);font-weight:500">说明</th>
+          <th style="text-align:center;padding:8px 12px;font-size:12px;color:var(--text3);font-weight:500;width:120px">值</th>
+          <th style="width:72px"></th>
+        </tr></thead>
+        <tbody>
+          ${items.map(c => `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:10px 12px;font-size:13px;color:var(--text);font-weight:500">${c.label || c.key}</td>
+            <td style="padding:10px 12px;font-size:12px;color:var(--text2)">${c.note || '-'}</td>
+            <td style="padding:10px 12px;text-align:center">
+              <input id="cfg-${c.key}" type="${c.type==='number'?'number':'text'}" value="${c.value}"
+                style="width:80px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);text-align:center;font-size:13px"
+                onkeydown="if(event.key==='Enter')saveConfig('${c.key}')">
+            </td>
+            <td style="padding:10px 12px">
+              <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" onclick="saveConfig('${c.key}')">保存</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:var(--text3);padding:10px 12px">更新时间：${items[0]?.updated_at || '-'}</div>
+    </div>`;
+}
+
+async function saveConfig(key) {
+  const input = document.getElementById(`cfg-${key}`);
+  const value = input.value.trim();
+  if (!value) return;
+  try {
+    await fetch(`/api/config/${key}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({value}),
+    });
+    input.style.borderColor = 'var(--green)';
+    setTimeout(() => input.style.borderColor = 'var(--border)', 1500);
+  } catch(e) {
+    alert('保存失败: ' + e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════
 function scoreColor(score) {
@@ -939,13 +1158,13 @@ function calcDuration(start, end) {
 }
 
 function renderPagination(current, total, fn) {
-  if (total <= 1) return '';
+  if (total < 1) total = 1;
   const pages = [];
   for (let i = Math.max(1, current-2); i <= Math.min(total, current+2); i++) pages.push(i);
   return `<span class="page-info">第 ${current}/${total} 页</span>
-    ${current > 1 ? `<button class="btn btn-ghost" style="padding:4px 10px" onclick="${fn}(${current-1})">‹</button>` : ''}
+    ${current > 1 ? `<button class="btn btn-ghost" style="padding:4px 10px" onclick="${fn}(1)">«</button><button class="btn btn-ghost" style="padding:4px 10px" onclick="${fn}(${current-1})">‹</button>` : '<button class="btn btn-ghost" style="padding:4px 10px;opacity:.3" disabled>«</button><button class="btn btn-ghost" style="padding:4px 10px;opacity:.3" disabled>‹</button>'}
     ${pages.map(p => `<button class="btn ${p===current?'btn-primary':'btn-ghost'}" style="padding:4px 10px;min-width:32px" onclick="${fn}(${p})">${p}</button>`).join('')}
-    ${current < total ? `<button class="btn btn-ghost" style="padding:4px 10px" onclick="${fn}(${current+1})">›</button>` : ''}`;
+    ${current < total ? `<button class="btn btn-ghost" style="padding:4px 10px" onclick="${fn}(${current+1})">›</button><button class="btn btn-ghost" style="padding:4px 10px" onclick="${fn}(${total})">»</button>` : '<button class="btn btn-ghost" style="padding:4px 10px;opacity:.3" disabled>›</button><button class="btn btn-ghost" style="padding:4px 10px;opacity:.3" disabled>»</button>'}`;
 }
 
 function loading() {

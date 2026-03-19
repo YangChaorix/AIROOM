@@ -43,10 +43,18 @@ from config.settings import settings
 
 def setup_logging():
     """
-    初始化日志：
-    - 控制台：INFO 级别，简洁格式
-    - 文件：DEBUG 级别，完整格式，写入 logs/YYYY-MM-DD.log
+    初始化日志，支持两个环境变量开关：
+      LOG_FILE_ENABLED=true/false  是否写文件日志（默认 true）
+      LOG_LEVEL=DEBUG/INFO/WARNING 控制台日志级别（默认 INFO）
+    文件固定写入 logs/YYYY-MM-DD.log，级别 DEBUG。
     """
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    log_file_enabled = os.getenv("LOG_FILE_ENABLED", "true").lower() != "false"
+    console_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    console_level = getattr(logging, console_level_name, logging.INFO)
+
     today = datetime.now().strftime("%Y-%m-%d")
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
@@ -57,27 +65,27 @@ def setup_logging():
 
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
-
-    # 清除已有 handler（避免重复）
     root.handlers.clear()
 
-    # 控制台 handler（INFO）
+    # 控制台 handler
     ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
+    ch.setLevel(console_level)
     ch.setFormatter(logging.Formatter(fmt, datefmt))
     root.addHandler(ch)
 
-    # 文件 handler（DEBUG）
-    fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(logging.Formatter(fmt, datefmt))
-    root.addHandler(fh)
+    # 文件 handler（可关闭）
+    if log_file_enabled:
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter(fmt, datefmt))
+        root.addHandler(fh)
 
     # 抑制第三方库的 DEBUG 噪音
     for noisy in ["httpx", "httpcore", "urllib3", "asyncio"]:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    logging.getLogger(__name__).info(f"日志文件: {os.path.abspath(log_file)}")
+    status = f"文件日志: {'开启 → ' + os.path.abspath(log_file) if log_file_enabled else '关闭'} | 控制台级别: {console_level_name}"
+    logging.getLogger(__name__).info(status)
     return log_file
 
 
@@ -161,26 +169,6 @@ def _print_review_result(state: dict) -> None:
         _log(rr.get("review_markdown", "（无内容）"))
     _log("=" * 60)
 
-
-def _save_results(state: dict) -> None:
-    """将完整结果保存到 data/daily_push/"""
-    data_dir = settings.agent.data_dir
-    os.makedirs(data_dir, exist_ok=True)
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    # 保存复盘日报（markdown）
-    review_result = state.get("review_result") or {}
-    if review_result.get("review_markdown"):
-        md_path = os.path.join(data_dir, f"{today}_review.md")
-        with open(md_path, "w", encoding="utf-8") as f:
-            f.write(review_result["review_markdown"])
-        logger.info(f"复盘日报已保存: {md_path}")
-
-    # 保存完整state（JSON）
-    json_path = os.path.join(data_dir, f"{today}_full.json")
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2, default=str)
-    logger.info(f"完整结果已保存: {json_path}")
 
 
 def cmd_init_db() -> None:
@@ -267,7 +255,6 @@ def cmd_trigger_only() -> None:
     logger.info("启动模式：仅触发检测")
     state = run_workflow(run_mode="trigger_only")
     _print_trigger_result(state)
-    _save_results(state)
 
 
 def cmd_event() -> None:
@@ -279,7 +266,6 @@ def cmd_event() -> None:
     state = run_workflow(run_mode="full")
     _print_trigger_result(state)
     _print_screener_result(state)
-    _save_results(state)
 
 
 def cmd_review() -> None:
@@ -290,7 +276,6 @@ def cmd_review() -> None:
     logger.info("启动模式：仅复盘")
     state = run_workflow(run_mode="review_only")
     _print_review_result(state)
-    _save_results(state)
 
 
 def cmd_collect() -> None:
@@ -325,13 +310,11 @@ def cmd_schedule() -> None:
         state = run_workflow(run_mode="full")
         _print_trigger_result(state)
         _print_screener_result(state)
-        _save_results(state)
 
     def job_review():
         logger.info("[定时任务] 15:35 复盘 启动")
         state = run_workflow(run_mode="review_only")
         _print_review_result(state)
-        _save_results(state)
 
     scheduler.add_job(
         job_morning, "cron", hour=9, minute=15, id="morning_job", name="触发+精筛（09:15）"

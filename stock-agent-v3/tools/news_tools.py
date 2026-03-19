@@ -25,11 +25,11 @@ _HTTP_HEADERS = {
 logger = logging.getLogger(__name__)
 
 
-def _truncate(text: str, max_len: int = 300) -> str:
+def _truncate(text: str, max_len: int = 2000) -> str:
     if not text or not isinstance(text, str):
         return ""
     text = text.strip().replace("\n", " ").replace("\r", "")
-    return text[:max_len] + "..." if len(text) > max_len else text
+    return text[:max_len] if len(text) > max_len else text
 
 
 def _parse_date(date_str: str) -> Optional[str]:
@@ -69,7 +69,7 @@ def get_today_macro_news() -> list[dict]:
                 _add(
                     {
                         "标题": _truncate(str(row.get("标题", "")), 200),
-                        "内容": _truncate(str(row.get("内容", "")), 300),
+                        "内容": _truncate(str(row.get("内容", ""))),
                         "来源": "财联社",
                         "时间": _parse_date(time_str.strip()),
                     }
@@ -86,7 +86,7 @@ def get_today_macro_news() -> list[dict]:
                 _add(
                     {
                         "标题": _truncate(str(row.get("标题", "")), 200),
-                        "内容": _truncate(str(row.get("摘要", "")), 300),
+                        "内容": _truncate(str(row.get("摘要", ""))),
                         "来源": "东方财富",
                         "时间": _parse_date(str(row.get("发布时间", ""))),
                     }
@@ -103,7 +103,7 @@ def get_today_macro_news() -> list[dict]:
                 _add(
                     {
                         "标题": _truncate(str(row.get("标题", "")), 200),
-                        "内容": _truncate(str(row.get("内容", "")), 300),
+                        "内容": _truncate(str(row.get("内容", ""))),
                         "来源": "同花顺",
                         "时间": _parse_date(str(row.get("发布时间", ""))),
                     }
@@ -149,7 +149,7 @@ def get_cls_telegraph() -> list[dict]:
             results.append(
                 {
                     "标题": _truncate(title, 200),
-                    "内容": _truncate(content, 300),
+                    "内容": _truncate(content),
                     "来源": "财联社电报",
                     "时间": _parse_date(time_val),
                 }
@@ -182,7 +182,7 @@ def get_policy_news() -> list[dict]:
         df = ak.stock_info_global_sina()
         if df is not None and not df.empty:
             for _, row in df.head(30).iterrows():
-                content = _truncate(str(row.get("内容", "")), 300)
+                content = _truncate(str(row.get("内容", "")))
                 if content and content != "nan" and content not in seen_titles:
                     seen_titles.add(content)
                     news_list.append({
@@ -199,7 +199,7 @@ def get_policy_news() -> list[dict]:
         df = ak.stock_news_main_cx()
         if df is not None and not df.empty:
             for _, row in df.head(20).iterrows():
-                summary = _truncate(str(row.get("summary", "")), 300)
+                summary = _truncate(str(row.get("summary", "")))
                 if summary and summary != "nan" and summary not in seen_titles:
                     seen_titles.add(summary)
                     news_list.append({
@@ -266,7 +266,7 @@ def get_ndrc_news(max_articles: int = 5) -> list[dict]:
                 pub_time = time_tag.get_text(strip=True) if time_tag else ""
                 results.append({
                     "标题": _truncate(item["title"], 200),
-                    "内容": _truncate(content, 500),
+                    "内容": _truncate(content),
                     "来源": "国家发改委",
                     "时间": pub_time,
                     "url": item["url"],

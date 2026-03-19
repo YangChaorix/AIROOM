@@ -96,38 +96,38 @@ def check_event_freshness(event_summary: str, event_type: str) -> dict:
             reason: str               # 判断理由
         }
     """
-    today_str = date.today().isoformat()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     event_hash = _make_event_hash(event_summary, event_type)
     history = load_event_history()
 
     if event_hash not in history:
         # 首次出现：记录并返回高新鲜度
         history[event_hash] = {
-            "first_seen": today_str,
+            "first_seen": now_str,
             "summary": event_summary[:100],
             "type": event_type,
-            "last_seen": today_str,
+            "last_seen": now_str,
         }
         save_event_history(history)
         return {
             "is_fresh": True,
             "days_since_first": 0,
-            "first_seen": today_str,
+            "first_seen": now_str,
             "freshness_label": "高",
             "reason": "今日首次出现，为新增信息",
         }
 
     record = history[event_hash]
-    first_seen_str = record.get("first_seen", today_str)
+    first_seen_str = record.get("first_seen", now_str)
     try:
-        first_seen_date = date.fromisoformat(first_seen_str)
+        first_seen_date = date.fromisoformat(first_seen_str[:10])
     except ValueError:
         first_seen_date = date.today()
 
     days_elapsed = (date.today() - first_seen_date).days
 
     # 更新 last_seen
-    record["last_seen"] = today_str
+    record["last_seen"] = now_str
     save_event_history(history)
 
     if days_elapsed > STALE_DAYS:
@@ -156,19 +156,19 @@ def mark_event_seen(event_summary: str, event_type: str) -> None:
         event_summary: 事件摘要文本
         event_type: 事件类型
     """
-    today_str = date.today().isoformat()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     event_hash = _make_event_hash(event_summary, event_type)
     history = load_event_history()
 
     if event_hash not in history:
         history[event_hash] = {
-            "first_seen": today_str,
+            "first_seen": now_str,
             "summary": event_summary[:100],
             "type": event_type,
-            "last_seen": today_str,
+            "last_seen": now_str,
         }
     else:
-        history[event_hash]["last_seen"] = today_str
+        history[event_hash]["last_seen"] = now_str
 
     save_event_history(history)
     logger.debug(f"事件已标记: hash={event_hash}, type={event_type}, summary={event_summary[:50]}")
@@ -191,7 +191,7 @@ def cleanup_old_events(days: int = CLEANUP_DAYS) -> int:
     for event_hash, record in history.items():
         last_seen_str = record.get("last_seen", record.get("first_seen", "2000-01-01"))
         try:
-            last_seen_date = date.fromisoformat(last_seen_str)
+            last_seen_date = date.fromisoformat(last_seen_str[:10])
         except ValueError:
             last_seen_date = date(2000, 1, 1)
 

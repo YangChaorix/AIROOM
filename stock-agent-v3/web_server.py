@@ -2,18 +2,42 @@
 import sqlite3
 import json
 import os
+import threading
+import subprocess
+import sys
+from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, Query, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Query, HTTPException, Body
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "data", "stock_agent.db")
+DB_PATH = os.path.join(BASE_DIR, "data", "db", "stock_agent.db")
 WEB_DIR = os.path.join(BASE_DIR, "web")
 
-app = FastAPI(title="Stock Agent Dashboard", version="1.0.0")
+sys.path.insert(0, BASE_DIR)
+from tools.db import db as agent_db  # noqa: E402
+
+# ── Manual Run State ──────────────────────────────────────────────────────────
+_run_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
+
+
+@asynccontextmanager
+async def lifespan(app):
+    """启动时清理上次异常退出留下的 running 状态"""
+    if os.path.exists(DB_PATH):
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute(
+                "UPDATE run_logs SET status='interrupted', finished_at=? WHERE status='running'",
+                (datetime.now().isoformat(timespec="seconds"),),
+            )
+    yield
+
+
+app = FastAPI(title="Stock Agent Dashboard", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -128,7 +152,11 @@ def api_summary():
             "recent_trigger_activity": [{"date": r[0], "count": r[1]} for r in recent_triggers],
             "news_sources": news_sources,
             "strength_distribution": strength_dist,
-            "last_runs": [dict(r) for r in last_runs],
+            "last_runs": [
+                {"run_date": r[0], "run_mode": r[1], "started_at": r[2],
+                 "finished_at": r[3], "status": r[4], "error_msg": r[5]}
+                for r in last_runs
+            ],
         }
 
 
@@ -166,13 +194,45 @@ def api_triggers(date: Optional[str] = Query(None), limit: int = Query(100, ge=1
 
 
 # ── Screener Stocks ───────────────────────────────────────────────────────────
+@app.get("/api/screener-stocks/runs")
+def api_screener_runs(date: Optional[str] = Query(None)):
+    if not date:
+        raise HTTPException(400, "date is required")
+    rows = query_db(
+        "SELECT DISTINCT run_id FROM screener_stocks WHERE run_date=? AND run_id!='' ORDER BY run_id DESC",
+        (date,),
+    )
+    return {"runs": [r["run_id"] for r in rows]}
+
+
 @app.get("/api/screener-stocks")
-def api_screener_stocks(date: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=500)):
+def api_screener_stocks(
+    date: Optional[str] = Query(None),
+    run_id: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
     if date:
-        rows = query_db("SELECT * FROM screener_stocks WHERE run_date=? ORDER BY rank", (date,))
+        if run_id:
+            rows = query_db(
+                "SELECT * FROM screener_stocks WHERE run_date=? AND run_id=? ORDER BY rank LIMIT ?",
+                (date, run_id, limit),
+            )
+        else:
+            # 取最新批次
+            latest = query_db(
+                "SELECT run_id FROM screener_stocks WHERE run_date=? ORDER BY run_id DESC LIMIT 1",
+                (date,), fetchall=False,
+            )
+            if not latest:
+                return {"items": [], "run_id": None}
+            rows = query_db(
+                "SELECT * FROM screener_stocks WHERE run_date=? AND run_id=? ORDER BY rank LIMIT ?",
+                (date, latest["run_id"], limit),
+            )
+            run_id = latest["run_id"]
     else:
-        rows = query_db("SELECT * FROM screener_stocks ORDER BY run_date DESC, rank LIMIT ?", (limit,))
-    return {"items": rows}
+        rows = query_db("SELECT * FROM screener_stocks ORDER BY run_date DESC, run_id DESC, rank LIMIT ?", (limit,))
+    return {"items": rows, "run_id": run_id}
 
 
 # ── Review ────────────────────────────────────────────────────────────────────
@@ -199,6 +259,9 @@ def api_news(
     date: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
+    time_start: Optional[str] = Query(None),
+    time_end: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
@@ -209,10 +272,19 @@ def api_news(
         conditions.append("source=?"); params.append(source)
     if priority:
         conditions.append("priority=?"); params.append(priority)
+    if time_start:
+        conditions.append("COALESCE(time(pub_time), time(collected_at)) >= time(?)")
+        params.append(time_start)
+    if time_end:
+        conditions.append("COALESCE(time(pub_time), time(collected_at)) <= time(?)")
+        params.append(time_end)
+    if q:
+        conditions.append("(title LIKE ? OR content LIKE ?)")
+        params.extend([f"%{q}%", f"%{q}%"])
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     rows = query_db(
-        f"SELECT id, collect_date, title, content, source, pub_time, collected_at, priority FROM news_items {where} ORDER BY collected_at DESC LIMIT ? OFFSET ?",
+        f"SELECT id, collect_date, title, content, source, pub_time, collected_at, priority FROM news_items {where} ORDER BY COALESCE(time(pub_time), time(collected_at)) DESC LIMIT ? OFFSET ?",
         params + [limit, offset],
     )
     total = query_db(f"SELECT COUNT(*) as cnt FROM news_items {where}", params, fetchall=False)
@@ -252,6 +324,63 @@ def api_prompt_detail(prompt_id: int):
     if not row:
         raise HTTPException(404, "Prompt not found")
     return row
+
+
+# ── System Config ─────────────────────────────────────────────────────────────
+@app.get("/api/config")
+def api_get_configs():
+    return {"items": agent_db.get_all_configs()}
+
+
+@app.put("/api/config/{key}")
+def api_set_config(key: str, payload: dict = Body(...)):
+    value = payload.get("value")
+    if value is None:
+        raise HTTPException(400, "value is required")
+    ok = agent_db.set_config(key, str(value))
+    if not ok:
+        raise HTTPException(404, f"Config key '{key}' not found")
+    return {"key": key, "value": str(value)}
+
+
+# ── Manual Run ────────────────────────────────────────────────────────────────
+def _do_run():
+    _run_state["running"] = True
+    _run_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+    _run_state["finished_at"] = None
+    _run_state["error"] = None
+    _run_state["status"] = "running"
+    try:
+        main_py = os.path.join(BASE_DIR, "main.py")
+        result = subprocess.run(
+            [sys.executable, main_py, "--event"],
+            capture_output=True, text=True, cwd=BASE_DIR
+        )
+        if result.returncode == 0:
+            _run_state["status"] = "success"
+        else:
+            _run_state["status"] = "error"
+            _run_state["error"] = (result.stderr or result.stdout or "Unknown error")[-500:]
+    except Exception as e:
+        _run_state["status"] = "error"
+        _run_state["error"] = str(e)
+    finally:
+        _run_state["running"] = False
+        _run_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
+
+
+@app.post("/api/run/trigger")
+def api_run_trigger():
+    if _run_state["running"]:
+        raise HTTPException(status_code=409, detail="Analysis already running")
+    t = threading.Thread(target=_do_run, daemon=True)
+    t.start()
+    return {"message": "Analysis started", "started_at": _run_state["started_at"]}
+
+
+@app.get("/api/run/status")
+def api_run_status():
+    return dict(_run_state)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

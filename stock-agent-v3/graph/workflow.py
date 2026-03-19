@@ -12,9 +12,7 @@ run_mode: 'full' | 'trigger_only' | 'review_only'
 v1.1: WorkflowState 新增 search_results 字段用于传递 Web 搜索结果
 """
 
-import json
 import logging
-import os
 from datetime import datetime
 from typing import TypedDict, Optional, Literal
 
@@ -23,7 +21,6 @@ from langgraph.graph import StateGraph, START, END
 from agents.trigger_agent import run_trigger_agent
 from agents.screener_agent import run_screener_agent
 from agents.review_agent import run_review_agent
-from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,33 +35,35 @@ class WorkflowState(TypedDict):
     error: Optional[str]
 
 
-def _save_daily_push(trigger_result: dict, screener_result: dict) -> str:
-    """将当日推送记录写入 data/daily_push/YYYY-MM-DD.json"""
-    data_dir = settings.agent.data_dir
-    os.makedirs(data_dir, exist_ok=True)
-    today = datetime.now().strftime("%Y-%m-%d")
-    file_path = os.path.join(data_dir, f"{today}.json")
-    payload = {
-        "date": today,
-        "trigger_result": trigger_result,
-        "screener_result": screener_result,
-        "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    logger.info(f"当日推送记录已保存: {file_path}")
-    return file_path
-
-
-def _load_daily_push(date: str = None) -> Optional[dict]:
-    """读取 data/daily_push/YYYY-MM-DD.json"""
+def _load_daily_push_from_db(date: str = None) -> Optional[dict]:
+    """从 DB 读取当日触发+精筛结果，拼装为 daily_push 格式"""
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
-    file_path = os.path.join(settings.agent.data_dir, f"{date}.json")
-    if os.path.exists(file_path):
-        with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return None
+    try:
+        from tools.db import db
+        triggers = db.get_triggers(date)
+        screener_rows = db.get_screener(date)
+        if not triggers and not screener_rows:
+            return None
+        top20 = [
+            {
+                "rank": r["rank"],
+                "name": r["stock_name"],
+                "code": r["stock_code"],
+                "trigger_reason": r.get("trigger_reason", ""),
+                "total_score": r.get("total_score"),
+                "recommendation": r.get("recommendation", ""),
+                "risk": r.get("risk", ""),
+            }
+            for r in screener_rows
+        ]
+        return {
+            "trigger_result": {"has_triggers": len(triggers) > 0, "triggers": triggers},
+            "screener_result": {"top20": top20},
+        }
+    except Exception as e:
+        logger.warning(f"从 DB 加载 daily_push 失败: {e}")
+        return None
 
 
 # ── 节点函数 ───────────────────────────────────────────────
@@ -90,8 +89,6 @@ def screener_node(state: WorkflowState) -> WorkflowState:
     trigger_result = state.get("trigger_result") or {}
     try:
         result = run_screener_agent(trigger_result)
-        # 保存推送记录
-        _save_daily_push(trigger_result, result)
         return {**state, "screener_result": result}
     except Exception as e:
         logger.error(f"screener_node 异常: {e}")
@@ -103,13 +100,14 @@ def review_node(state: WorkflowState) -> WorkflowState:
     if state["run_mode"] == "trigger_only":
         return {**state, "review_result": None}
     try:
-        # 尝试读取当日推送记录（可能由 screener_node 写入，也可能是历史记录）
-        daily_push = _load_daily_push()
-        if daily_push is None and state.get("trigger_result") and state.get("screener_result"):
+        # 优先从当前 state 取，否则从 DB 加载当日数据
+        if state.get("trigger_result") and state.get("screener_result"):
             daily_push = {
                 "trigger_result": state["trigger_result"],
                 "screener_result": state["screener_result"],
             }
+        else:
+            daily_push = _load_daily_push_from_db()
         result = run_review_agent(daily_push=daily_push)
         return {**state, "review_result": result}
     except Exception as e:

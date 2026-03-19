@@ -1,7 +1,7 @@
 """
 SQLite 统一存储管理器（v1.0）
 单文件 SQLite，零安装，零内存常驻进程
-文件路径：data/stock_agent.db
+文件路径：data/db/stock_agent.db
 """
 
 import json
@@ -44,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_triggers_date ON triggers(run_date);
 CREATE TABLE IF NOT EXISTS screener_stocks (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     run_date       TEXT NOT NULL,
+    run_id         TEXT NOT NULL,
     rank           INTEGER,
     stock_name     TEXT,
     stock_code     TEXT,
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS screener_stocks (
     created_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_screener_date ON screener_stocks(run_date);
+CREATE INDEX IF NOT EXISTS idx_screener_run ON screener_stocks(run_date, run_id);
 CREATE INDEX IF NOT EXISTS idx_screener_code ON screener_stocks(stock_code);
 
 CREATE TABLE IF NOT EXISTS review_reports (
@@ -115,14 +117,32 @@ CREATE TABLE IF NOT EXISTS event_history (
     event_hash  TEXT NOT NULL UNIQUE,
     first_seen  TEXT NOT NULL,
     last_seen   TEXT NOT NULL,
+    seen_count  INTEGER NOT NULL DEFAULT 1,
     summary     TEXT,
     event_type  TEXT
 );
+
+CREATE TABLE IF NOT EXISTS system_config (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    type       TEXT NOT NULL DEFAULT 'number',
+    label      TEXT,
+    note       TEXT,
+    updated_at TEXT NOT NULL
+);
 """
+
+_DEFAULT_CONFIGS = [
+    ("dashboard_picks_limit", "10",  "number", "控制台精选显示条数", "控制台「今日精选」最多显示几条"),
+    ("screener_top_n",        "20",  "number", "精选股票总数",       "每次分析筛选并保存的 Top N 精选数量"),
+    ("news_collect_days",     "1",   "number", "新闻保留天数",       "新闻缓存管理器读取最近 N 天的新闻参与分析"),
+    ("stale_event_days",      "14",  "number", "事件陈旧阈值(天)",   "超过此天数的事件被标记为低新鲜度"),
+    ("cleanup_event_days",    "30",  "number", "事件清理周期(天)",   "超过此天数未再出现的事件自动清理"),
+]
 
 
 class StockAgentDB:
-    DEFAULT_DB_PATH = "data/stock_agent.db"
+    DEFAULT_DB_PATH = "data/db/stock_agent.db"
 
     def __init__(self, db_path: str = None):
         if db_path is None:
@@ -142,6 +162,25 @@ class StockAgentDB:
         conn = sqlite3.connect(self.db_path)
         try:
             conn.executescript(_DDL)
+            conn.commit()
+            # 迁移：screener_stocks 加 run_id 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(screener_stocks)").fetchall()]
+            if "run_id" not in cols:
+                conn.execute("ALTER TABLE screener_stocks ADD COLUMN run_id TEXT NOT NULL DEFAULT ''")
+                conn.commit()
+            # 迁移：event_history 加 seen_count 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(event_history)").fetchall()]
+            if "seen_count" not in cols:
+                conn.execute("ALTER TABLE event_history ADD COLUMN seen_count INTEGER NOT NULL DEFAULT 1")
+                conn.commit()
+            # 初始化默认系统配置（已存在的 key 跳过）
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for key, value, typ, label, note in _DEFAULT_CONFIGS:
+                conn.execute(
+                    """INSERT OR IGNORE INTO system_config (key, value, type, label, note, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (key, value, typ, label, note, now),
+                )
             conn.commit()
         finally:
             conn.close()
@@ -229,10 +268,10 @@ class StockAgentDB:
     # ── screener_stocks ───────────────────────────────────────────────────────
 
     def save_screener(self, run_date: str, top20: list) -> None:
-        """保存当日精筛结果（覆盖写）"""
+        """保存精筛结果（追加，每次分析生成新的 run_id）"""
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        run_id = created_at  # 同一批次共用同一个时间戳
         with self.get_conn() as conn:
-            conn.execute("DELETE FROM screener_stocks WHERE run_date=?", (run_date,))
             for stock in top20:
                 scores = stock.get("scores", {})
 
@@ -244,14 +283,15 @@ class StockAgentDB:
 
                 conn.execute(
                     """INSERT INTO screener_stocks
-                       (run_date, rank, stock_name, stock_code, trigger_reason,
+                       (run_date, run_id, rank, stock_name, stock_code, trigger_reason,
                         d1_score, d1_reason, d2_score, d2_reason,
                         d3_score, d3_reason, d4_score, d4_reason,
                         d5_score, d5_reason, d6_score, d6_reason,
                         total_score, recommendation, risk, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         run_date,
+                        run_id,
                         stock.get("rank"),
                         stock.get("name", ""),
                         stock.get("code", ""),
@@ -268,15 +308,37 @@ class StockAgentDB:
                         created_at,
                     ),
                 )
-        logger.debug(f"save_screener: {run_date} 写入 {len(top20)} 条")
+        logger.debug(f"save_screener: {run_date} run_id={run_id} 写入 {len(top20)} 条")
 
-    def get_screener(self, run_date: str) -> list:
-        """读取某日精筛结果"""
+    def get_screener_run_ids(self, run_date: str) -> list:
+        """返回某日所有精筛批次 run_id，按时间倒序"""
         with self.get_conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM screener_stocks WHERE run_date=? ORDER BY rank",
+                "SELECT DISTINCT run_id FROM screener_stocks WHERE run_date=? ORDER BY run_id DESC",
                 (run_date,),
             ).fetchall()
+        return [r[0] for r in rows if r[0]]
+
+    def get_screener(self, run_date: str, run_id: str = None) -> list:
+        """读取某日精筛结果；run_id 为空则返回最新批次"""
+        with self.get_conn() as conn:
+            if run_id:
+                rows = conn.execute(
+                    "SELECT * FROM screener_stocks WHERE run_date=? AND run_id=? ORDER BY rank",
+                    (run_date, run_id),
+                ).fetchall()
+            else:
+                # 取最新批次
+                latest = conn.execute(
+                    "SELECT run_id FROM screener_stocks WHERE run_date=? ORDER BY run_id DESC LIMIT 1",
+                    (run_date,),
+                ).fetchone()
+                if not latest:
+                    return []
+                rows = conn.execute(
+                    "SELECT * FROM screener_stocks WHERE run_date=? AND run_id=? ORDER BY rank",
+                    (run_date, latest[0]),
+                ).fetchall()
         return [dict(row) for row in rows]
 
     def get_stock_history(self, stock_code: str, days: int = 30) -> list:
@@ -446,12 +508,14 @@ class StockAgentDB:
 
     def upsert_event(self, event_hash: str, summary: str, event_type: str,
                      first_seen: str, last_seen: str) -> None:
-        """插入或更新事件记录（冲突时只更新 last_seen）"""
+        """插入或更新事件记录（冲突时更新 last_seen 并累计 seen_count）"""
         with self.get_conn() as conn:
             conn.execute(
-                """INSERT INTO event_history (event_hash, first_seen, last_seen, summary, event_type)
-                   VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(event_hash) DO UPDATE SET last_seen=excluded.last_seen""",
+                """INSERT INTO event_history (event_hash, first_seen, last_seen, seen_count, summary, event_type)
+                   VALUES (?, ?, ?, 1, ?, ?)
+                   ON CONFLICT(event_hash) DO UPDATE SET
+                       last_seen=excluded.last_seen,
+                       seen_count=seen_count+1""",
                 (event_hash, first_seen, last_seen, summary, event_type),
             )
 
@@ -462,6 +526,35 @@ class StockAgentDB:
                 "DELETE FROM event_history WHERE last_seen < ?", (before_date,)
             )
             return cur.rowcount
+
+    # ── system_config ──────────────────────────────────────────────────────────
+
+    def get_all_configs(self) -> list:
+        with self.get_conn() as conn:
+            rows = conn.execute("SELECT * FROM system_config ORDER BY key").fetchall()
+        return [dict(r) for r in rows]
+
+    def get_config(self, key: str, default=None):
+        with self.get_conn() as conn:
+            row = conn.execute("SELECT value, type FROM system_config WHERE key=?", (key,)).fetchone()
+        if not row:
+            return default
+        value, typ = row["value"], row["type"]
+        if typ == "number":
+            try:
+                return int(value)
+            except ValueError:
+                return float(value)
+        return value
+
+    def set_config(self, key: str, value: str) -> bool:
+        updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self.get_conn() as conn:
+            cur = conn.execute(
+                "UPDATE system_config SET value=?, updated_at=? WHERE key=?",
+                (value, updated_at, key),
+            )
+        return cur.rowcount > 0
 
 
 db = StockAgentDB()  # 全局单例

@@ -61,14 +61,11 @@ class AgentConfig:
     verbose: bool = field(
         default_factory=lambda: os.getenv("AGENT_VERBOSE", "false").lower() == "true"
     )
-    data_dir: str = field(
-        default_factory=lambda: os.getenv("AGENT_DATA_DIR", "data/daily_push")
-    )
     event_history_dir: str = field(
         default_factory=lambda: os.getenv("AGENT_EVENT_HISTORY_DIR", "data/event_history")
     )
     db_path: str = field(
-        default_factory=lambda: os.getenv("AGENT_DB_PATH", "data/stock_agent.db")
+        default_factory=lambda: os.getenv("AGENT_DB_PATH", "data/db/stock_agent.db")
     )
     # 采集间隔（分钟）
     collect_interval_high: int = field(
