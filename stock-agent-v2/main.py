@@ -65,58 +65,65 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
+def _log(msg: str) -> None:
+    """同时输出到终端和日志文件"""
+    print(msg)
+    logger.info(msg)
+
+
 def _print_trigger_result(state: dict) -> None:
     tr = state.get("trigger_result") or {}
-    print("\n" + "=" * 60)
-    print("【触发Agent 输出】")
-    print(f"日期：{tr.get('date', 'N/A')}")
-    print(f"是否触发：{tr.get('has_triggers', False)}")
+    _log("\n" + "=" * 60)
+    _log("【触发Agent 输出】")
+    _log(f"日期：{tr.get('date', 'N/A')}")
+    _log(f"是否触发：{tr.get('has_triggers', False)}")
     triggers = tr.get("triggers", [])
-    print(f"触发条目数：{len(triggers)}")
+    _log(f"触发条目数：{len(triggers)}")
     for i, t in enumerate(triggers, 1):
-        print(f"\n  [{i}] {t.get('type', '')} | 强度：{t.get('strength', '')}")
-        print(f"      摘要：{t.get('summary', '')[:100]}...")
-        print(f"      行业：{', '.join(t.get('industries', []))}")
+        _log(f"\n  [{i}] {t.get('type', '')} | 强度：{t.get('strength', '')}")
+        _log(f"      摘要：{t.get('summary', '')[:100]}...")
+        _log(f"      行业：{', '.join(t.get('industries', []))}")
         companies = t.get("companies", {})
         for cat, lst in companies.items():
-            print(f"      {cat}：{', '.join(lst[:3]) if isinstance(lst[0], str) else str(lst[:3])}")
+            if lst:
+                _log(f"      {cat}：{', '.join(lst[:3]) if isinstance(lst[0], str) else str(lst[:3])}")
     if tr.get("error"):
-        print(f"错误：{tr['error']}")
-    print("=" * 60)
+        _log(f"错误：{tr['error']}")
+    _log("=" * 60)
 
 
 def _print_screener_result(state: dict) -> None:
     sr = state.get("screener_result") or {}
     if sr.get("skipped"):
-        print("\n【精筛Agent】跳过（无触发信息）")
+        _log("\n【精筛Agent】跳过（无触发信息）")
         return
-    print("\n" + "=" * 60)
-    print("【精筛Agent 输出 - Top 20】")
+    _log("\n" + "=" * 60)
+    _log("【精筛Agent 输出 - Top 20】")
     top20 = sr.get("top20", [])
     for stock in top20:
         scores = stock.get("scores", {})
         total = stock.get("total_score", sum(v.get("score", 0) for v in scores.values()))
-        print(f"\n  #{stock.get('rank', '?')} {stock.get('name', '')} ({stock.get('code', '')})"
-              f" | 总分：{total}/18")
-        print(f"      触发：{stock.get('trigger_reason', '')[:60]}")
+        _log(f"\n  #{stock.get('rank', '?')} {stock.get('name', '')} ({stock.get('code', '')})"
+             f" | 总分：{total}/18")
+        _log(f"      触发：{stock.get('trigger_reason', '')[:60]}")
         for dim, info in scores.items():
-            print(f"      {dim}: {info.get('score', '?')}分 - {info.get('reason', '')[:40]}")
-        print(f"      推荐：{stock.get('recommendation', '')[:120]}")
-        print(f"      风险：{stock.get('risk', '')[:60]}")
+            _log(f"      {dim}: {info.get('score', '?')}分 - {info.get('reason', '')[:40]}")
+        _log(f"      推荐：{stock.get('recommendation', '')[:120]}")
+        _log(f"      风险：{stock.get('risk', '')[:60]}")
     if sr.get("error"):
-        print(f"错误：{sr['error']}")
-    print("=" * 60)
+        _log(f"错误：{sr['error']}")
+    _log("=" * 60)
 
 
 def _print_review_result(state: dict) -> None:
     rr = state.get("review_result") or {}
-    print("\n" + "=" * 60)
-    print("【复盘Agent 输出】")
+    _log("\n" + "=" * 60)
+    _log("【复盘Agent 输出】")
     if rr.get("error"):
-        print(f"错误：{rr['error']}")
+        _log(f"错误：{rr['error']}")
     else:
-        print(rr.get("review_markdown", "（无内容）"))
-    print("=" * 60)
+        _log(rr.get("review_markdown", "（无内容）"))
+    _log("=" * 60)
 
 
 def _save_results(state: dict) -> None:

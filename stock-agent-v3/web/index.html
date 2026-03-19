@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>股票智能体 · 管理面板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b1120;--bg2:#111827;--bg3:#1a2335;--border:#1e293b;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#475569;
+  --green:#10b981;--green2:#34d399;--red:#ef4444;--red2:#fca5a5;
+  --yellow:#f59e0b;--blue:#3b82f6;--purple:#8b5cf6;--cyan:#06b6d4;
+  --sidebar:240px;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;display:flex;min-height:100vh;overflow:hidden}
+a{color:inherit;text-decoration:none}
+/* ── Scrollbars ── */
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ── Sidebar ── */
+#sidebar{width:var(--sidebar);min-height:100vh;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:fixed;top:0;left:0;bottom:0;z-index:100}
+.sb-logo{padding:20px 16px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.sb-logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--green),var(--blue));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.sb-logo-text{font-size:15px;font-weight:700;color:var(--text)}
+.sb-logo-sub{font-size:11px;color:var(--text2)}
+.sb-nav{padding:12px 8px;flex:1;overflow-y:auto}
+.sb-section{font-size:10px;font-weight:600;color:var(--text3);padding:8px 8px 4px;text-transform:uppercase;letter-spacing:.08em}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;color:var(--text2);transition:.15s;margin-bottom:2px}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{background:rgba(16,185,129,.15);color:var(--green)}
+.nav-item .icon{font-size:16px;width:20px;text-align:center}
+.nav-item .label{font-size:13px;font-weight:500}
+.sb-footer{padding:12px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);text-align:center}
+
+/* ── Main ── */
+#main{margin-left:var(--sidebar);flex:1;display:flex;flex-direction:column;min-height:100vh;overflow:hidden}
+
+/* ── Topbar ── */
+#topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--bg2);border-bottom:1px solid var(--border);gap:16px;flex-shrink:0}
+.topbar-title{font-size:16px;font-weight:600;color:var(--text)}
+.topbar-controls{display:flex;align-items:center;gap:10px}
+select,input[type=date]{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none}
+select:focus,input[type=date]:focus{border-color:var(--green)}
+.btn{padding:7px 14px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:500;transition:.15s}
+.btn-primary{background:var(--green);color:#000}.btn-primary:hover{background:var(--green2)}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text2)}.btn-ghost:hover{background:var(--bg3);color:var(--text)}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}.dot-red{background:var(--red)}.dot-yellow{background:var(--yellow)}
+
+/* ── Content ── */
+#content{flex:1;overflow-y:auto;padding:24px}
+.page{display:none}.page.active{display:block}
+
+/* ── Grid / Cards ── */
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card-sm{padding:16px}
+.card-title{font-size:13px;color:var(--text2);margin-bottom:12px;font-weight:500;display:flex;align-items:center;gap:6px}
+.stat-value{font-size:28px;font-weight:700;color:var(--text)}
+.stat-sub{font-size:12px;color:var(--text2);margin-top:4px}
+.stat-up{color:var(--green)}.stat-down{color:var(--red)}.stat-neutral{color:var(--text2)}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.badge-green{background:rgba(16,185,129,.15);color:var(--green)}
+.badge-red{background:rgba(239,68,68,.15);color:var(--red)}
+.badge-yellow{background:rgba(245,158,11,.15);color:var(--yellow)}
+.badge-blue{background:rgba(59,130,246,.15);color:var(--blue)}
+.badge-purple{background:rgba(139,92,246,.15);color:var(--purple)}
+.badge-cyan{background:rgba(6,182,212,.15);color:var(--cyan)}
+.badge-gray{background:rgba(71,85,105,.3);color:var(--text2)}
+
+/* ── Tables ── */
+.table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse}
+th{padding:10px 16px;text-align:left;font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;background:var(--bg3);border-bottom:1px solid var(--border)}
+td{padding:12px 16px;border-bottom:1px solid rgba(30,41,59,.6);font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(26,35,53,.5)}
+
+/* ── Score Bars ── */
+.score-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.score-label{font-size:11px;color:var(--text2);width:28px;flex-shrink:0}
+.score-bar-track{flex:1;height:6px;background:rgba(30,41,59,.8);border-radius:3px;overflow:hidden}
+.score-bar-fill{height:100%;border-radius:3px;transition:.3s}
+.score-val{font-size:11px;font-weight:600;width:16px;text-align:right;flex-shrink:0}
+.score-bar-0{background:var(--red)}.score-bar-1{background:var(--yellow)}.score-bar-2{background:#84cc16}.score-bar-3{background:var(--green)}
+
+/* ── Stock Card ── */
+.stock-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.stock-card-header{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:.15s}
+.stock-card-header:hover{background:var(--bg3)}
+.rank-badge{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0}
+.rank-1{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000}
+.rank-2{background:linear-gradient(135deg,#e2e8f0,#94a3b8);color:#000}
+.rank-3{background:linear-gradient(135deg,#fb923c,#ea580c);color:#fff}
+.rank-other{background:var(--bg3);color:var(--text2)}
+.stock-name{font-size:15px;font-weight:600;color:var(--text)}
+.stock-code{font-size:12px;color:var(--text2);margin-top:2px}
+.total-score{margin-left:auto;text-align:center;flex-shrink:0}
+.total-score-num{font-size:24px;font-weight:700}
+.total-score-max{font-size:11px;color:var(--text2)}
+.stock-card-body{padding:0 20px 16px;border-top:1px solid var(--border)}
+.score-section{margin-top:14px}
+.score-section-title{font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em}
+.dim-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 20px}
+.dim-item{}
+.dim-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.dim-name{font-size:12px;color:var(--text2)}
+.dim-score{font-size:13px;font-weight:700}
+.dim-bar-track{height:4px;background:rgba(30,41,59,.8);border-radius:2px;overflow:hidden}
+.dim-bar-fill{height:100%;border-radius:2px}
+.dim-reason{font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4}
+.info-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.info-block{background:var(--bg3);border-radius:8px;padding:10px 14px;flex:1;min-width:200px}
+.info-block-title{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.info-block-text{font-size:12px;color:var(--text2);line-height:1.6}
+.toggle-btn{font-size:12px;color:var(--text3)}
+
+/* ── Trigger Card ── */
+.trigger-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px}
+.trigger-header{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+.trigger-type-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.trigger-summary{font-size:14px;color:var(--text);line-height:1.6;margin-bottom:12px}
+.tag-list{display:flex;flex-wrap:wrap;gap:6px}
+.tag{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:var(--blue);padding:3px 10px;border-radius:20px;font-size:11px}
+.companies-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:10px}
+.company-group{background:var(--bg3);border-radius:8px;padding:10px 12px}
+.company-group-title{font-size:10px;color:var(--text3);margin-bottom:6px;text-transform:uppercase}
+.company-item{font-size:12px;color:var(--text2);margin-bottom:2px}
+.freshness-bar{height:4px;border-radius:2px;margin-top:10px}
+.caution-box{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:12px;color:#fca5a5;line-height:1.6}
+
+/* ── News ── */
+.news-item{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:8px;cursor:pointer;transition:.15s}
+.news-item:hover{border-color:var(--text3)}
+.news-meta{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.news-title{font-size:13px;font-weight:600;color:var(--text);line-height:1.5;margin-bottom:6px}
+.news-content{font-size:12px;color:var(--text2);line-height:1.6;display:none}
+.news-content.expanded{display:block}
+.source-badge{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600}
+.src-财联社{background:rgba(239,68,68,.15);color:#fca5a5}
+.src-东方财富{background:rgba(245,158,11,.15);color:var(--yellow)}
+.src-新浪财经{background:rgba(239,68,68,.2);color:#fca5a5}
+.src-同花顺{background:rgba(59,130,246,.15);color:var(--blue)}
+.src-财新{background:rgba(139,92,246,.15);color:var(--purple)}
+.src-财联社电报{background:rgba(6,182,212,.15);color:var(--cyan)}
+
+/* ── Markdown ── */
+.md-content h1,.md-content h2,.md-content h3{color:var(--text);margin:16px 0 8px;font-weight:600}
+.md-content h1{font-size:20px;border-bottom:1px solid var(--border);padding-bottom:8px}
+.md-content h2{font-size:17px}.md-content h3{font-size:15px;color:var(--text2)}
+.md-content p{color:var(--text2);line-height:1.7;margin-bottom:10px;font-size:13px}
+.md-content ul,.md-content ol{padding-left:20px;margin-bottom:10px}
+.md-content li{color:var(--text2);line-height:1.7;font-size:13px;margin-bottom:4px}
+.md-content strong{color:var(--text);font-weight:600}
+.md-content code{background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:12px;color:var(--cyan)}
+.md-content blockquote{border-left:3px solid var(--border);padding-left:14px;color:var(--text2);margin:10px 0}
+.md-content table{width:100%;border-collapse:collapse;margin:10px 0}
+.md-content th{background:var(--bg3);padding:8px 12px;text-align:left;font-size:12px;color:var(--text3);border:1px solid var(--border)}
+.md-content td{padding:8px 12px;font-size:12px;color:var(--text2);border:1px solid var(--border)}
+.md-content hr{border:none;border-top:1px solid var(--border);margin:14px 0}
+
+/* ── Misc ── */
+.loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--text3);gap:8px}
+.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:60px;color:var(--text3)}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.section-title{font-size:16px;font-weight:600;color:var(--text)}
+.divider{height:1px;background:var(--border);margin:20px 0}
+.chart-container{position:relative;height:200px}
+.filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.pagination{display:flex;align-items:center;gap:8px;margin-top:16px;justify-content:flex-end}
+.page-info{font-size:12px;color:var(--text2)}
+
+/* ── Run log status ── */
+.status-pill{padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.status-completed{background:rgba(16,185,129,.15);color:var(--green)}
+.status-running{background:rgba(245,158,11,.15);color:var(--yellow)}
+.status-error{background:rgba(239,68,68,.15);color:var(--red)}
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  .grid-4{grid-template-columns:repeat(2,1fr)}
+  .grid-3{grid-template-columns:1fr 1fr}
+  .dim-grid{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  :root{--sidebar:0px}
+  #sidebar{display:none}
+  .grid-4,.grid-3,.grid-2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ SIDEBAR ══════════════════ -->
+<aside id="sidebar">
+  <div class="sb-logo">
+    <div class="sb-logo-icon">📈</div>
+    <div><div class="sb-logo-text">Stock Agent</div><div class="sb-logo-sub">智能选股系统</div></div>
+  </div>
+  <nav class="sb-nav">
+    <div class="sb-section">主要功能</div>
+    <div class="nav-item active" data-page="dashboard"><span class="icon">📊</span><span class="label">控制台</span></div>
+    <div class="nav-item" data-page="picks"><span class="icon">🏆</span><span class="label">精选股票</span></div>
+    <div class="nav-item" data-page="triggers"><span class="icon">⚡</span><span class="label">触发事件</span></div>
+    <div class="nav-item" data-page="review"><span class="icon">📋</span><span class="label">市场复盘</span></div>
+    <div class="nav-item" data-page="news"><span class="icon">📰</span><span class="label">新闻动态</span></div>
+    <div class="sb-section" style="margin-top:8px">系统管理</div>
+    <div class="nav-item" data-page="logs"><span class="icon">📜</span><span class="label">运行日志</span></div>
+    <div class="nav-item" data-page="events"><span class="icon">🔁</span><span class="label">事件去重</span></div>
+    <div class="nav-item" data-page="prompts"><span class="icon">🧠</span><span class="label">提示词管理</span></div>
+  </nav>
+  <div class="sb-footer">Stock Agent v3</div>
+</aside>
+
+<!-- ══════════════════ MAIN ══════════════════ -->
+<div id="main">
+  <!-- Topbar -->
+  <div id="topbar">
+    <div class="topbar-title" id="page-title">控制台</div>
+    <div class="topbar-controls">
+      <select id="date-selector" onchange="onDateChange()"><option value="">加载中...</option></select>
+      <button class="btn btn-ghost" onclick="refreshCurrent()">↻ 刷新</button>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- ════ DASHBOARD ════ -->
+    <div class="page active" id="page-dashboard">
+      <div id="dash-stats" class="grid-4" style="margin-bottom:16px"></div>
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-title">📈 近期触发事件数量</div>
+          <div class="chart-container"><canvas id="chart-triggers"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">📰 今日新闻来源分布</div>
+          <div class="chart-container"><canvas id="chart-news"></canvas></div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">🏆 今日精选（前5）</div>
+          <div id="dash-stocks"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">📋 最近运行记录</div>
+          <div id="dash-runs"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ PICKS ════ -->
+    <div class="page" id="page-picks">
+      <div class="section-header">
+        <div class="section-title">🏆 精选股票 · <span id="picks-date-label" class="badge badge-green">-</span></div>
+        <div style="font-size:12px;color:var(--text2)">6维度评分系统（满分18分）</div>
+      </div>
+      <div id="picks-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+    </div>
+
+    <!-- ════ TRIGGERS ════ -->
+    <div class="page" id="page-triggers">
+      <div class="section-header">
+        <div class="section-title">⚡ 触发事件 · <span id="triggers-date-label" class="badge badge-yellow">-</span></div>
+        <div id="triggers-count" style="font-size:12px;color:var(--text2)"></div>
+      </div>
+      <div id="triggers-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+    </div>
+
+    <!-- ════ REVIEW ════ -->
+    <div class="page" id="page-review">
+      <div class="section-header">
+        <div class="section-title">📋 市场复盘</div>
+        <select id="review-date-sel" style="margin:0" onchange="loadReview(this.value)"><option value="">选择日期</option></select>
+      </div>
+      <div id="review-stats" class="grid-4" style="margin-bottom:16px"></div>
+      <div class="card">
+        <div class="card-title">📄 复盘报告</div>
+        <div id="review-content" class="md-content" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <!-- ════ NEWS ════ -->
+    <div class="page" id="page-news">
+      <div class="section-header">
+        <div class="section-title">📰 新闻动态</div>
+        <div id="news-total" style="font-size:12px;color:var(--text2)"></div>
+      </div>
+      <div class="filters">
+        <select id="news-source-sel" onchange="loadNews(1)"><option value="">全部来源</option></select>
+        <select id="news-priority-sel" onchange="loadNews(1)">
+          <option value="">全部优先级</option>
+          <option value="high">HIGH 高</option>
+          <option value="medium">MEDIUM 中</option>
+          <option value="low">LOW 低</option>
+        </select>
+        <select id="news-limit-sel" onchange="loadNews(1)">
+          <option value="30">30 条</option>
+          <option value="50" selected>50 条</option>
+          <option value="100">100 条</option>
+        </select>
+      </div>
+      <div id="news-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+      <div class="pagination" id="news-pagination"></div>
+    </div>
+
+    <!-- ════ LOGS ════ -->
+    <div class="page" id="page-logs">
+      <div class="section-header">
+        <div class="section-title">📜 运行日志</div>
+        <div id="logs-total" style="font-size:12px;color:var(--text2)"></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>日期</th><th>模式</th><th>开始时间</th><th>结束时间</th><th>耗时</th><th>状态</th><th>错误信息</th>
+          </tr></thead>
+          <tbody id="logs-body"><tr><td colspan="7"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="logs-pagination"></div>
+    </div>
+
+    <!-- ════ EVENTS ════ -->
+    <div class="page" id="page-events">
+      <div class="section-header">
+        <div class="section-title">🔁 事件去重历史</div>
+        <div id="events-total" style="font-size:12px;color:var(--text2)"></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>类型</th><th>首次出现</th><th>最近出现</th><th>事件摘要</th>
+          </tr></thead>
+          <tbody id="events-body"><tr><td colspan="4"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ════ PROMPTS ════ -->
+    <div class="page" id="page-prompts">
+      <div class="section-header"><div class="section-title">🧠 提示词管理</div></div>
+      <div id="prompts-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+      <!-- Prompt detail modal -->
+      <div id="prompt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:none;align-items:center;justify-content:center">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;width:min(800px,95vw);max-height:80vh;display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
+            <div style="font-weight:600" id="modal-title">提示词详情</div>
+            <button class="btn btn-ghost" onclick="closeModal()" style="padding:4px 10px">✕</button>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:20px">
+            <pre id="modal-content" style="background:var(--bg3);padding:16px;border-radius:8px;font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6;font-family:'Cascadia Code',Consolas,monospace"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+const S = {
+  page: 'dashboard',
+  date: null,
+  dates: [],
+  newsPage: 1,
+  logsPage: 1,
+  triggerChart: null,
+  newsChart: null,
+};
+
+const PAGE_TITLES = {
+  dashboard:'控制台', picks:'精选股票', triggers:'触发事件',
+  review:'市场复盘', news:'新闻动态', logs:'运行日志',
+  events:'事件去重历史', prompts:'提示词管理',
+};
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+async function init() {
+  // Nav click handlers
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => navigate(el.dataset.page));
+  });
+  await loadDates();
+  renderPage('dashboard');
+}
+
+async function loadDates() {
+  const data = await api('/api/dates');
+  S.dates = data.dates || [];
+  const sel = document.getElementById('date-selector');
+  sel.innerHTML = S.dates.map((d, i) => `<option value="${d}" ${i===0?'selected':''}>${d}</option>`).join('');
+  if (S.dates.length) S.date = S.dates[0];
+  // Populate review date select
+  const rsel = document.getElementById('review-date-sel');
+  rsel.innerHTML = S.dates.map((d,i) => `<option value="${d}" ${i===0?'selected':''}>${d}</option>`).join('');
+}
+
+function onDateChange() {
+  S.date = document.getElementById('date-selector').value;
+  renderPage(S.page);
+}
+
+function refreshCurrent() { renderPage(S.page); }
+
+// ═══════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════
+function navigate(page) {
+  document.querySelectorAll('.nav-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.page === page));
+  document.querySelectorAll('.page').forEach(el =>
+    el.classList.toggle('active', el.id === 'page-' + page));
+  document.getElementById('page-title').textContent = PAGE_TITLES[page] || page;
+  S.page = page;
+  renderPage(page);
+}
+
+function renderPage(page) {
+  switch(page) {
+    case 'dashboard': loadDashboard(); break;
+    case 'picks':     loadPicks(); break;
+    case 'triggers':  loadTriggers(); break;
+    case 'review':    loadReview(S.date); break;
+    case 'news':      loadNews(1); break;
+    case 'logs':      loadLogs(1); break;
+    case 'events':    loadEvents(); break;
+    case 'prompts':   loadPrompts(); break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// API
+// ═══════════════════════════════════════════════════════
+async function api(url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(r.statusText);
+    return await r.json();
+  } catch(e) { console.error(url, e); return {}; }
+}
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════
+async function loadDashboard() {
+  const d = await api('/api/summary');
+  if (!d || d.error) { document.getElementById('dash-stats').innerHTML = `<div class="card"><div class="empty">⚠️ ${d?.error||'无法连接数据库'}</div></div>`; return; }
+
+  const t = d.today || {};
+  const lr = d.latest_review;
+
+  // Stat cards
+  document.getElementById('dash-stats').innerHTML = `
+    ${statCard('今日运行次数', t.runs ?? '-', '运行模式', '⚙️')}
+    ${statCard('触发事件数', t.triggers ?? '-', `最新日期: ${d.latest_date || '-'}`, '⚡')}
+    ${statCard('精选股票数', t.stocks ?? '-', '6维度评分筛选', '🏆')}
+    ${statCard('收录新闻数', t.news ?? '-', '多源聚合', '📰')}
+  `;
+
+  // Review stats overlay
+  if (lr) {
+    const pct = (lr.avg_change || 0).toFixed(2);
+    const el = document.getElementById('dash-stats');
+    el.insertAdjacentHTML('beforeend', `
+      <div class="card" style="grid-column:span 4;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div><div class="card-title">📊 最新市场概况 (${d.latest_date})</div></div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div><div style="font-size:11px;color:var(--text2)">上涨家数</div><div style="font-size:20px;font-weight:700;color:var(--green)">${lr.up ?? '-'}</div></div>
+          <div><div style="font-size:11px;color:var(--text2)">下跌家数</div><div style="font-size:20px;font-weight:700;color:var(--red)">${lr.down ?? '-'}</div></div>
+          <div><div style="font-size:11px;color:var(--text2)">平均涨跌幅</div><div style="font-size:20px;font-weight:700;color:${pct>=0?'var(--green)':'var(--red)'}">${pct}%</div></div>
+          <div style="flex:1;min-width:200px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">市场情绪</div><div style="font-size:13px;color:var(--text);line-height:1.5">${lr.sentiment || '-'}</div></div>
+        </div>
+      </div>
+    `);
+  }
+
+  // Trigger activity chart
+  drawBarChart('chart-triggers', d.recent_trigger_activity || []);
+  // News source chart
+  drawDoughnutChart('chart-news', d.news_sources || []);
+
+  // Top stocks preview
+  loadDashStocks();
+  // Last runs
+  const runsHtml = (d.last_runs || []).map(r => {
+    const st = r.status || 'running';
+    const dur = calcDuration(r.started_at, r.finished_at);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span class="status-pill status-${st}">${st}</span>
+      <span style="font-size:12px;color:var(--text)">${r.run_date}</span>
+      <span class="badge badge-gray">${r.run_mode}</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--text3)">${dur}</span>
+    </div>`;
+  }).join('') || '<div class="empty" style="padding:20px">暂无数据</div>';
+  document.getElementById('dash-runs').innerHTML = runsHtml;
+}
+
+async function loadDashStocks() {
+  const d = await api(`/api/screener-stocks?date=${S.date}&limit=5`);
+  const stocks = d.items || [];
+  if (!stocks.length) { document.getElementById('dash-stocks').innerHTML = '<div class="empty" style="padding:20px">暂无精选股票</div>'; return; }
+  document.getElementById('dash-stocks').innerHTML = stocks.map(s => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="navigate('picks')">
+      <div class="rank-badge rank-${s.rank<=3?s.rank:'other'}">${s.rank}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${s.stock_name}</div>
+        <div style="font-size:11px;color:var(--text2)">${s.stock_code}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:18px;font-weight:700;color:${scoreColor(s.total_score)}">${s.total_score}</div>
+        <div style="font-size:10px;color:var(--text3)">/18分</div>
+      </div>
+    </div>`).join('');
+}
+
+function statCard(title, value, sub, icon) {
+  return `<div class="card card-sm">
+    <div class="card-title">${icon} ${title}</div>
+    <div class="stat-value">${value}</div>
+    <div class="stat-sub">${sub}</div>
+  </div>`;
+}
+
+function drawBarChart(canvasId, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  if (S.triggerChart) { S.triggerChart.destroy(); S.triggerChart = null; }
+  if (!data.length) return;
+  S.triggerChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.date),
+      datasets: [{
+        data: data.map(d => d.count),
+        backgroundColor: 'rgba(16,185,129,.5)',
+        borderColor: 'rgba(16,185,129,.8)',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: 'rgba(30,41,59,.5)' } },
+        y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: 'rgba(30,41,59,.5)' }, beginAtZero: true },
+      }
+    }
+  });
+}
+
+function drawDoughnutChart(canvasId, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  if (S.newsChart) { S.newsChart.destroy(); S.newsChart = null; }
+  if (!data.length) return;
+  const colors = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#06b6d4','#ec4899'];
+  S.newsChart = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: data.map(d => d.source),
+      datasets: [{ data: data.map(d => d.count), backgroundColor: colors, borderWidth: 0, hoverOffset: 4 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 11 }, padding: 8, boxWidth: 10 } }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// PICKS (Screener Stocks)
+// ═══════════════════════════════════════════════════════
+async function loadPicks() {
+  document.getElementById('picks-date-label').textContent = S.date || '-';
+  document.getElementById('picks-list').innerHTML = loading();
+  const d = await api(`/api/screener-stocks?date=${S.date}`);
+  const stocks = d.items || [];
+  if (!stocks.length) { document.getElementById('picks-list').innerHTML = empty('该日期暂无精选股票数据'); return; }
+  document.getElementById('picks-list').innerHTML = stocks.map(s => renderStockCard(s)).join('');
+}
+
+const DIM_NAMES = { d1:'龙头地位', d2:'受益程度', d3:'股东结构', d4:'上涨趋势', d5:'技术突破', d6:'估值合理' };
+const DIM_KEYS = ['d1','d2','d3','d4','d5','d6'];
+
+function renderStockCard(s) {
+  const id = `stock-${s.id}`;
+  const sc = scoreColor(s.total_score);
+  const dims = DIM_KEYS.map(k => {
+    const score = s[`${k}_score`] ?? 0;
+    const reason = s[`${k}_reason`] || '';
+    const pct = (score / 3) * 100;
+    const cls = `score-bar-${score}`;
+    return `<div class="dim-item">
+      <div class="dim-header">
+        <span class="dim-name">${DIM_NAMES[k]}</span>
+        <span class="dim-score" style="color:${dimColor(score)}">${score}/3</span>
+      </div>
+      <div class="dim-bar-track"><div class="dim-bar-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="dim-reason">${reason}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="stock-card">
+    <div class="stock-card-header" onclick="toggleCard('${id}')">
+      <div class="rank-badge rank-${s.rank<=3?s.rank:'other'}">${s.rank}</div>
+      <div style="flex:1">
+        <div class="stock-name">${s.stock_name}</div>
+        <div class="stock-code">${s.stock_code}
+          <span class="badge badge-blue" style="margin-left:6px">${s.run_date}</span>
+        </div>
+      </div>
+      <div class="total-score">
+        <div class="total-score-num" style="color:${sc}">${s.total_score}</div>
+        <div class="total-score-max">/18分</div>
+      </div>
+      <span class="toggle-btn" id="toggle-${id}" style="margin-left:12px">▼</span>
+    </div>
+    <div class="stock-card-body" id="${id}" style="display:none">
+      <div class="score-section">
+        <div class="score-section-title">六维评分</div>
+        <div class="dim-grid">${dims}</div>
+      </div>
+      <div class="info-row">
+        <div class="info-block">
+          <div class="info-block-title">⚡ 触发原因</div>
+          <div class="info-block-text">${s.trigger_reason || '-'}</div>
+        </div>
+        <div class="info-block">
+          <div class="info-block-title">✅ 推荐理由</div>
+          <div class="info-block-text">${s.recommendation || '-'}</div>
+        </div>
+      </div>
+      ${s.risk ? `<div class="caution-box">⚠️ 风险提示：${s.risk}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function toggleCard(id) {
+  const body = document.getElementById(id);
+  const btn = document.getElementById('toggle-' + id);
+  if (!body) return;
+  const show = body.style.display === 'none';
+  body.style.display = show ? 'block' : 'none';
+  if (btn) btn.textContent = show ? '▲' : '▼';
+}
+
+// ═══════════════════════════════════════════════════════
+// TRIGGERS
+// ═══════════════════════════════════════════════════════
+async function loadTriggers() {
+  document.getElementById('triggers-date-label').textContent = S.date || '-';
+  document.getElementById('triggers-list').innerHTML = loading();
+  const d = await api(`/api/triggers?date=${S.date}`);
+  const items = d.items || [];
+  document.getElementById('triggers-count').textContent = `共 ${items.length} 个事件`;
+  if (!items.length) { document.getElementById('triggers-list').innerHTML = empty('该日期暂无触发事件'); return; }
+  document.getElementById('triggers-list').innerHTML = items.map(t => renderTriggerCard(t)).join('');
+}
+
+function renderTriggerCard(t) {
+  const strengthClass = { HIGH: 'badge-red', MEDIUM: 'badge-yellow', LOW: 'badge-blue' }[t.strength] || 'badge-gray';
+  const typeIcon = t.trigger_type?.includes('政策') ? '🏛️' : t.trigger_type?.includes('涨价') ? '📈' : '🌪️';
+  const typeClass = t.trigger_type?.includes('政策') ? 'badge-blue' : t.trigger_type?.includes('涨价') ? 'badge-yellow' : 'badge-purple';
+  const freshnessOk = t.freshness === '高';
+
+  const industries = Array.isArray(t.industries) ? t.industries : [];
+  const companies = typeof t.companies === 'object' && t.companies !== null ? t.companies : {};
+
+  const compHtml = Object.entries(companies).map(([cat, list]) => `
+    <div class="company-group">
+      <div class="company-group-title">${cat}</div>
+      ${(Array.isArray(list) ? list : [list]).map(c => `<div class="company-item">· ${c}</div>`).join('')}
+    </div>`).join('');
+
+  return `<div class="trigger-card">
+    <div class="trigger-header">
+      <div class="trigger-type-icon" style="background:rgba(59,130,246,.1)">${typeIcon}</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="badge ${typeClass}">${t.trigger_type || '未知类型'}</span>
+          <span class="badge ${strengthClass}">强度: ${t.strength || '-'}</span>
+          <span class="badge ${freshnessOk ? 'badge-green' : 'badge-gray'}">新鲜度: ${t.freshness || '-'}</span>
+          <span style="font-size:11px;color:var(--text3)">${t.run_date}</span>
+        </div>
+      </div>
+    </div>
+    <div class="trigger-summary">${t.summary || ''}</div>
+    ${industries.length ? `<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--text3);margin-bottom:6px">受影响行业</div><div class="tag-list">${industries.map(i=>`<span class="tag">${i}</span>`).join('')}</div></div>` : ''}
+    ${compHtml ? `<div><div style="font-size:11px;color:var(--text3);margin-bottom:8px">相关公司</div><div class="companies-grid">${compHtml}</div></div>` : ''}
+    ${t.freshness_reason ? `<div style="margin-top:10px;font-size:12px;color:var(--text2)">💡 ${t.freshness_reason}</div>` : ''}
+    ${t.caution ? `<div class="caution-box">⚠️ ${t.caution}</div>` : ''}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// REVIEW
+// ═══════════════════════════════════════════════════════
+async function loadReview(date) {
+  if (!date) date = S.date;
+  document.getElementById('review-content').innerHTML = loading();
+  document.getElementById('review-stats').innerHTML = '';
+  const d = await api(`/api/review-report?date=${date}`);
+  if (!d || !d.run_date) { document.getElementById('review-content').innerHTML = empty('该日期暂无复盘报告'); return; }
+
+  const pct = (d.avg_pct_change || 0).toFixed(2);
+  const sectors = Array.isArray(d.top_sectors) ? d.top_sectors : [];
+
+  document.getElementById('review-stats').innerHTML = `
+    ${statCard('上涨家数', d.market_up_count ?? '-', '今日上涨个股', '📈')}
+    ${statCard('下跌家数', d.market_down_count ?? '-', '今日下跌个股', '📉')}
+    ${statCard('平均涨跌幅', (pct >= 0 ? '+' : '') + pct + '%', '全市场平均', '📊')}
+    ${statCard('是否周五', d.is_friday ? '是' : '否', d.is_friday ? '包含周末分析' : '普通交易日', '📅')}
+  `;
+
+  const sectorsHtml = sectors.length ? `<div style="margin-bottom:16px">
+    <div class="card-title">🔥 热门板块</div>
+    <div class="tag-list">${sectors.map(s=>`<span class="tag">${s}</span>`).join('')}</div>
+  </div>` : '';
+
+  if (typeof marked !== 'undefined' && d.markdown_content) {
+    document.getElementById('review-content').innerHTML = sectorsHtml + marked.parse(d.markdown_content);
+  } else {
+    document.getElementById('review-content').innerHTML = sectorsHtml + `<pre style="white-space:pre-wrap;font-size:13px;color:var(--text2);line-height:1.7">${d.markdown_content || '无内容'}</pre>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// NEWS
+// ═══════════════════════════════════════════════════════
+let newsTotal = 0;
+
+async function loadNews(page) {
+  S.newsPage = page;
+  const source = document.getElementById('news-source-sel').value;
+  const priority = document.getElementById('news-priority-sel').value;
+  const limit = parseInt(document.getElementById('news-limit-sel').value || '50');
+  const offset = (page - 1) * limit;
+
+  document.getElementById('news-list').innerHTML = loading();
+
+  // Load sources for this date
+  if (page === 1) {
+    const srcs = await api(`/api/news/sources?date=${S.date}`);
+    const srcSel = document.getElementById('news-source-sel');
+    const cur = srcSel.value;
+    srcSel.innerHTML = '<option value="">全部来源</option>' +
+      (srcs.sources || []).map(s => `<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
+  }
+
+  let url = `/api/news?date=${S.date}&limit=${limit}&offset=${offset}`;
+  if (source) url += `&source=${encodeURIComponent(source)}`;
+  if (priority) url += `&priority=${priority}`;
+
+  const d = await api(url);
+  const items = d.items || [];
+  newsTotal = d.total || 0;
+
+  document.getElementById('news-total').textContent = `共 ${newsTotal} 条`;
+
+  if (!items.length) { document.getElementById('news-list').innerHTML = empty('暂无新闻数据'); document.getElementById('news-pagination').innerHTML = ''; return; }
+  document.getElementById('news-list').innerHTML = items.map(n => renderNewsItem(n)).join('');
+
+  // Pagination
+  const totalPages = Math.ceil(newsTotal / limit);
+  document.getElementById('news-pagination').innerHTML = renderPagination(page, totalPages, 'loadNews');
+}
+
+function renderNewsItem(n) {
+  const srcClass = 'src-' + (n.source || '').replace(/\s/g, '');
+  const priColor = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--text3)' }[n.priority] || 'var(--text3)';
+  const id = `news-${n.id}`;
+  return `<div class="news-item" onclick="toggleNews('${id}')">
+    <div class="news-meta">
+      <span class="source-badge ${srcClass}">${n.source || '未知'}</span>
+      ${n.priority ? `<span style="font-size:10px;color:${priColor};font-weight:600">${n.priority.toUpperCase()}</span>` : ''}
+      <span style="font-size:11px;color:var(--text3)">${fmt_time(n.pub_time || n.collected_at)}</span>
+    </div>
+    <div class="news-title">${n.title || '无标题'}</div>
+    <div class="news-content" id="${id}">${n.content || '无正文'}</div>
+  </div>`;
+}
+
+function toggleNews(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('expanded');
+}
+
+// ═══════════════════════════════════════════════════════
+// LOGS
+// ═══════════════════════════════════════════════════════
+async function loadLogs(page) {
+  S.logsPage = page;
+  const limit = 30;
+  const offset = (page - 1) * limit;
+  const d = await api(`/api/run-logs?limit=${limit}&offset=${offset}`);
+  const items = d.items || [];
+  const total = d.total || 0;
+  document.getElementById('logs-total').textContent = `共 ${total} 条`;
+  document.getElementById('logs-body').innerHTML = items.map(r => {
+    const dur = calcDuration(r.started_at, r.finished_at);
+    const st = r.status || 'running';
+    return `<tr>
+      <td>${r.run_date}</td>
+      <td><span class="badge badge-blue">${r.run_mode}</span></td>
+      <td style="color:var(--text2)">${fmt_time(r.started_at)}</td>
+      <td style="color:var(--text2)">${fmt_time(r.finished_at)}</td>
+      <td style="color:var(--text3)">${dur}</td>
+      <td><span class="status-pill status-${st}">${st}</span></td>
+      <td style="color:var(--red2);font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.error_msg || ''}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7"><div class="empty">暂无运行记录</div></td></tr>';
+
+  const totalPages = Math.ceil(total / limit);
+  document.getElementById('logs-pagination').innerHTML = renderPagination(page, totalPages, 'loadLogs');
+}
+
+// ═══════════════════════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════════════════════
+async function loadEvents() {
+  const d = await api('/api/event-history?limit=200');
+  const items = d.items || [];
+  document.getElementById('events-total').textContent = `共 ${items.length} 条去重记录`;
+  document.getElementById('events-body').innerHTML = items.map(e => `<tr>
+    <td><span class="badge badge-purple">${e.event_type || '-'}</span></td>
+    <td style="color:var(--text2)">${e.first_seen || '-'}</td>
+    <td style="color:var(--text2)">${e.last_seen || '-'}</td>
+    <td style="color:var(--text);max-width:400px">${e.summary || '-'}</td>
+  </tr>`).join('') || '<tr><td colspan="4"><div class="empty">暂无事件记录</div></td></tr>';
+}
+
+// ═══════════════════════════════════════════════════════
+// PROMPTS
+// ═══════════════════════════════════════════════════════
+async function loadPrompts() {
+  document.getElementById('prompts-list').innerHTML = loading();
+  const d = await api('/api/prompts');
+  const items = d.items || [];
+  if (!items.length) { document.getElementById('prompts-list').innerHTML = empty('暂无提示词数据'); return; }
+
+  // Group by agent
+  const groups = {};
+  items.forEach(p => {
+    const ag = p.agent_name || 'unknown';
+    if (!groups[ag]) groups[ag] = [];
+    groups[ag].push(p);
+  });
+
+  const agentIcon = { trigger: '⚡', screener: '🏆', review: '📋' };
+  const agentLabel = { trigger: '触发检测', screener: '股票筛选', review: '市场复盘' };
+
+  document.getElementById('prompts-list').innerHTML = Object.entries(groups).map(([ag, list]) => `
+    <div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:20px">${agentIcon[ag]||'🧠'}</span>
+        <span style="font-size:15px;font-weight:600;color:var(--text)">${agentLabel[ag]||ag} Agent</span>
+        <span class="badge badge-gray">${list.length} 个版本</span>
+      </div>
+      <div class="grid-3">
+        ${list.map(p => `<div class="card card-sm">
+          <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">${p.prompt_name}</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">${p.created_at?.substring(0,10) || ''}</div>
+            </div>
+            <span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? '激活' : '归档'}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+            <span class="badge badge-blue">v${p.version}</span>
+            <span style="font-size:11px;color:var(--text3)">${p.content_length || 0} 字符</span>
+          </div>
+          ${p.note ? `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">${p.note}</div>` : ''}
+          <button class="btn btn-ghost" style="width:100%;font-size:12px" onclick="showPrompt(${p.id})">查看全文</button>
+        </div>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function showPrompt(id) {
+  const d = await api(`/api/prompts/${id}`);
+  document.getElementById('modal-title').textContent = `${d.agent_name} · ${d.prompt_name} · v${d.version}`;
+  document.getElementById('modal-content').textContent = d.content || '无内容';
+  document.getElementById('prompt-modal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('prompt-modal').style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+function scoreColor(score) {
+  if (score >= 15) return 'var(--green)';
+  if (score >= 10) return '#84cc16';
+  if (score >= 6)  return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+function dimColor(score) {
+  return ['var(--red)','var(--yellow)','#84cc16','var(--green)'][score] || 'var(--text2)';
+}
+
+function fmt_time(s) {
+  if (!s) return '-';
+  return s.replace('T', ' ').substring(0, 16);
+}
+
+function calcDuration(start, end) {
+  if (!start || !end) return '-';
+  try {
+    const ms = new Date(end) - new Date(start);
+    if (ms < 0) return '-';
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s/60)}m ${s%60}s`;
+  } catch { return '-'; }
+}
+
+function renderPagination(current, total, fn) {
+  if (total <= 1) return '';
+  const pages = [];
+  for (let i = Math.max(1, current-2); i <= Math.min(total, current+2); i++) pages.push(i);
+  return `<span class="page-info">第 ${current}/${total} 页</span>
+    ${current > 1 ? `<button class="btn btn-ghost" style="padding:4px 10px" onclick="${fn}(${current-1})">‹</button>` : ''}
+    ${pages.map(p => `<button class="btn ${p===current?'btn-primary':'btn-ghost'}" style="padding:4px 10px;min-width:32px" onclick="${fn}(${p})">${p}</button>`).join('')}
+    ${current < total ? `<button class="btn btn-ghost" style="padding:4px 10px" onclick="${fn}(${current+1})">›</button>` : ''}`;
+}
+
+function loading() {
+  return `<div class="loading"><div class="spinner"></div> 加载中...</div>`;
+}
+
+function empty(msg) {
+  return `<div class="empty">📭 ${msg}</div>`;
+}
+
+// Close modal on backdrop click
+document.getElementById('prompt-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+// ═══════════════════════════════════════════════════════
+// START
+// ═══════════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Bash(/Users/yangchao/workspace/ai/AIROOM/stock-agent/.venv/bin/python3 main.py --event 2>&1)",
+      "Bash(/Users/yangchao/workspace/ai/AIROOM/stock-agent/.venv/bin/python3 -c \"\nimport akshare as ak\n\nprint\\('=== stock_info_global_sina ==='\\)\ndf = ak.stock_info_global_sina\\(\\)\nprint\\(df.columns.tolist\\(\\)\\)\nprint\\(df.head\\(2\\).to_string\\(\\)\\)\n\nprint\\(\\)\nprint\\('=== stock_news_main_cx ==='\\)\ndf2 = ak.stock_news_main_cx\\(\\)\nprint\\(df2.columns.tolist\\(\\)\\)\nprint\\(df2.head\\(2\\).to_string\\(\\)\\)\n\" 2>&1)",
+      "Bash(/Users/yangchao/workspace/ai/AIROOM/stock-agent/.venv/bin/python3 -c \"\nfrom tools.news_tools import get_policy_news\nnews = get_policy_news\\(\\)\nprint\\(f'获取到 {len\\(news\\)} 条政策新闻'\\)\nfor n in news[:3]:\n    print\\(f'  [{n[\\\\\"来源\\\\\"]}] {n[\\\\\"标题\\\\\"][:50]}'\\)\n\" 2>&1)"
+    ]
+  }
+}

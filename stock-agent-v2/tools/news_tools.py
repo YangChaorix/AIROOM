@@ -34,57 +34,60 @@ def _parse_date(date_str: str) -> Optional[str]:
 
 def get_today_macro_news() -> list[dict]:
     """
-    获取今日宏观政策新闻（财联社宏观）
+    获取今日宏观政策新闻（财联社 + 东方财富 + 同花顺）
     返回新闻列表，供 trigger_agent 分析触发条件
     """
     news_list = []
-    today = datetime.now().strftime("%Y-%m-%d")
+    seen_titles = set()  # 去重
+
+    def _add(item: dict):
+        title = item.get("标题", "")
+        if title and title != "nan" and title not in seen_titles:
+            seen_titles.add(title)
+            news_list.append(item)
 
     # 1. 财联社快讯
     try:
-        df = ak.stock_telegraph_cls()
+        df = ak.stock_info_global_cls()
         if df is not None and not df.empty:
-            for _, row in df.head(settings.akshare.news_count).iterrows():
-                item = {
-                    "标题": _truncate(str(row.get("内容", row.get("title", ""))), 200),
+            for _, row in df.iterrows():
+                time_str = str(row.get("发布日期", "")) + " " + str(row.get("发布时间", ""))
+                _add({
+                    "标题": _truncate(str(row.get("标题", "")), 200),
+                    "内容": _truncate(str(row.get("内容", "")), 300),
                     "来源": "财联社",
-                    "时间": _parse_date(str(row.get("时间", row.get("time", "")))),
-                }
-                if item["标题"] and item["标题"] != "nan":
-                    news_list.append(item)
+                    "时间": _parse_date(time_str.strip()),
+                })
     except Exception as e:
         news_list.append({"来源": "财联社", "错误": str(e)})
 
-    # 2. 东方财富宏观新闻
+    # 2. 东方财富快讯（200条，覆盖全天）
     try:
-        df = ak.news_economic_baidu()
+        df = ak.stock_info_global_em()
         if df is not None and not df.empty:
-            for _, row in df.head(20).iterrows():
-                item = {
-                    "标题": _truncate(str(row.get("title", row.get("标题", ""))), 200),
-                    "来源": "东方财富宏观",
-                    "时间": _parse_date(str(row.get("date", row.get("时间", "")))),
-                }
-                if item["标题"] and item["标题"] != "nan":
-                    news_list.append(item)
+            for _, row in df.iterrows():
+                _add({
+                    "标题": _truncate(str(row.get("标题", "")), 200),
+                    "内容": _truncate(str(row.get("摘要", "")), 300),
+                    "来源": "东方财富",
+                    "时间": _parse_date(str(row.get("发布时间", ""))),
+                })
     except Exception as e:
-        pass
+        news_list.append({"来源": "东方财富", "错误": str(e)})
 
     # 3. 同花顺快讯
     try:
         df = ak.stock_info_global_ths()
         if df is not None and not df.empty:
-            for _, row in df.head(20).iterrows():
-                item = {
-                    "标题": _truncate(str(row.get("标题", row.get("title", ""))), 200),
-                    "内容": _truncate(str(row.get("内容", row.get("content", ""))), 300),
+            for _, row in df.iterrows():
+                _add({
+                    "标题": _truncate(str(row.get("标题", "")), 200),
+                    "内容": _truncate(str(row.get("内容", "")), 300),
                     "来源": "同花顺",
-                    "时间": _parse_date(str(row.get("时间", row.get("time", "")))),
-                }
-                if item["标题"] and item["标题"] != "nan":
-                    news_list.append(item)
+                    "时间": _parse_date(str(row.get("发布时间", ""))),
+                })
     except Exception as e:
-        pass
+        news_list.append({"来源": "同花顺", "错误": str(e)})
 
     return news_list
 
