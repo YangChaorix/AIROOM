@@ -2,6 +2,7 @@
 技术指标工具：成交量/换手率分析，供 screener_agent D5 维度使用
 """
 
+import tools.proxy_patch  # noqa: F401 — 修复 Clash Fake-IP 模式下 requests 走系统代理的问题
 import json
 from datetime import datetime, timedelta
 from typing import Optional
@@ -10,36 +11,60 @@ import akshare as ak
 import pandas as pd
 
 
+import logging as _logging
+_logger = _logging.getLogger(__name__)
+
+_COL_MAP_EM = {
+    "日期": "date", "开盘": "open", "收盘": "close",
+    "最高": "high", "最低": "low", "成交量": "volume",
+    "成交额": "amount", "涨跌幅": "pct_change", "换手率": "turnover_rate",
+}
+
+
 def _get_kline(stock_code: str, days: int = 60) -> Optional[pd.DataFrame]:
+    """
+    获取 A 股日 K 线数据。
+    优先调用东方财富（stock_zh_a_hist），失败时回退到腾讯（stock_zh_a_hist_tx）。
+    返回标准化 DataFrame，含 date/open/close/high/low/volume 列。
+    """
+    end = datetime.now()
+    start = end - timedelta(days=days)
+    start_s, end_s = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+
+    # ── 方案1：东方财富（K线专用接口，部分网络环境可用）──
     try:
-        end = datetime.now()
-        start = end - timedelta(days=days)
         df = ak.stock_zh_a_hist(
-            symbol=stock_code,
-            period="daily",
-            start_date=start.strftime("%Y%m%d"),
-            end_date=end.strftime("%Y%m%d"),
-            adjust="qfq",
+            symbol=stock_code, period="daily",
+            start_date=start_s, end_date=end_s, adjust="qfq",
+        )
+        if df is not None and not df.empty:
+            df = df.rename(columns={k: v for k, v in _COL_MAP_EM.items() if k in df.columns})
+            for col in ["open", "close", "high", "low", "volume", "turnover_rate"]:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+            return df.sort_values("date").reset_index(drop=True)
+    except Exception as e:
+        _logger.debug(f"[{stock_code}] EM K线失败，切换腾讯接口: {e}")
+
+    # ── 方案2：腾讯（稳定备用，无成交量字段，用成交额/收盘价近似）──
+    try:
+        prefix = "sh" if stock_code.startswith(("6", "9")) else "sz"
+        df = ak.stock_zh_a_hist_tx(
+            symbol=f"{prefix}{stock_code}",
+            start_date=start_s, end_date=end_s,
         )
         if df is None or df.empty:
             return None
-        col_map = {
-            "日期": "date",
-            "开盘": "open",
-            "收盘": "close",
-            "最高": "high",
-            "最低": "low",
-            "成交量": "volume",
-            "成交额": "amount",
-            "涨跌幅": "pct_change",
-            "换手率": "turnover_rate",
-        }
-        df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
-        for col in ["open", "close", "high", "low", "volume", "turnover_rate"]:
+        for col in ["open", "close", "high", "low", "amount"]:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
+        # 用成交额 / 收盘价 近似成交量（量比精度略低，但趋势判断可用）
+        if "amount" in df.columns and "close" in df.columns:
+            df["volume"] = df["amount"] / df["close"].replace(0, float("nan"))
+        _logger.debug(f"[{stock_code}] 腾讯K线成功，共{len(df)}行")
         return df.sort_values("date").reset_index(drop=True)
-    except Exception:
+    except Exception as e:
+        _logger.warning(f"[{stock_code}] 腾讯K线也失败: {e}")
         return None
 
 
@@ -116,7 +141,7 @@ def calc_long_term_trend(stock_code: str) -> dict:
     - 60/120/250日均线排列
     - 近6个月涨幅
     """
-    df = _get_kline(stock_code, days=365)
+    df = _get_kline(stock_code, days=400)  # 多拉一些确保 250 个交易日够用
     if df is None or len(df) < 30:
         return {"stock_code": stock_code, "error": "数据不足", "d4_hint": "无法判断"}
 

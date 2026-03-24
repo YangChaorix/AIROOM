@@ -1,7 +1,9 @@
 """
-股票基础数据工具：基本信息、财务指标、历史K线
-供 screener_agent 使用
+股票基础数据工具：基本信息、财务指标、历史K线、个股新闻
+供 screener_agent / stock_analyst_agent 使用
 """
+
+import tools.proxy_patch  # noqa: F401 — 修复 Clash Fake-IP 模式下 requests 走系统代理的问题
 
 import json
 import traceback
@@ -64,6 +66,14 @@ def get_stock_basic_info(stock_code: str) -> dict:
         info["股票代码"] = stock_code
         return info
     except Exception as e:
+        # 降级：至少从交易所列表获取股票名称
+        try:
+            code_name_df = ak.stock_info_a_code_name()
+            row = code_name_df[code_name_df["code"] == stock_code]
+            if not row.empty:
+                return {"股票代码": stock_code, "股票简称": row.iloc[0]["name"], "error": str(e)}
+        except Exception:
+            pass
         return {"error": str(e), "股票代码": stock_code}
 
 
@@ -187,3 +197,59 @@ def get_historical_volume(stock_code: str, days: int = 30) -> dict:
         }
     except Exception as e:
         return {"error": str(e), "股票代码": stock_code}
+
+
+import logging as _logging
+_logger = _logging.getLogger(__name__)
+
+
+def get_stock_news_em(code: str, limit: int = 20, since_dt: str = None) -> list[dict]:
+    """
+    通过东方财富接口拉取个股新闻（akshare stock_news_em）。
+    返回标准化 news_item 列表，可直接写入 DB 或喂给 LLM。
+
+    Args:
+        code:     股票代码，如 "000001"
+        limit:    最多返回条数
+        since_dt: "YYYY-MM-DD HH:MM:SS" 起始时间过滤（None = 不过滤）
+
+    Returns:
+        [{"title", "content", "source", "pub_time", "collected_at", "priority"}, ...]
+    """
+    try:
+        df = ak.stock_news_em(symbol=code)
+    except Exception as e:
+        _logger.warning(f"[{code}] stock_news_em 接口调用失败: {e}")
+        return []
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    results = []
+    for _, row in df.iterrows():
+        pub_time = str(row.get("发布时间", "")).strip()
+        # 时间过滤
+        if since_dt and pub_time:
+            try:
+                if pub_time < since_dt:
+                    continue
+            except Exception:
+                pass
+
+        title   = str(row.get("新闻标题", "")).strip()
+        content = str(row.get("新闻内容", "")).strip()
+        source  = str(row.get("文章来源", "东方财富")).strip()
+        if not title or title == "nan":
+            continue
+
+        results.append({
+            "title":        title,
+            "content":      content[:500],
+            "source":       source,
+            "pub_time":     pub_time,
+            "collected_at": now_str,
+            "priority":     "medium",
+        })
+        if len(results) >= limit:
+            break
+
+    _logger.info(f"[{code}] stock_news_em 返回 {len(df)} 条，过滤后 {len(results)} 条")
+    return results

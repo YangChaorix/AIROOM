@@ -9,11 +9,17 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
+  --bg:#f0f4f8;--bg2:#ffffff;--bg3:#f0f4f8;--border:#e2e8f0;
+  --text:#1e293b;--text2:#64748b;--text3:#94a3b8;
+  --green:#059669;--green2:#10b981;--red:#dc2626;--red2:#fca5a5;
+  --yellow:#d97706;--blue:#2563eb;--purple:#7c3aed;--cyan:#0891b2;
+  --sidebar:240px;
+}
+body.dark{
   --bg:#0b1120;--bg2:#111827;--bg3:#1a2335;--border:#1e293b;
   --text:#e2e8f0;--text2:#94a3b8;--text3:#475569;
   --green:#10b981;--green2:#34d399;--red:#ef4444;--red2:#fca5a5;
   --yellow:#f59e0b;--blue:#3b82f6;--purple:#8b5cf6;--cyan:#06b6d4;
-  --sidebar:240px;
 }
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;display:flex;min-height:100vh;overflow:hidden}
 a{color:inherit;text-decoration:none}
@@ -21,7 +27,7 @@ a{color:inherit;text-decoration:none}
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 
 /* ── Sidebar ── */
-#sidebar{width:var(--sidebar);min-height:100vh;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:fixed;top:0;left:0;bottom:0;z-index:100}
+#sidebar{width:var(--sidebar);min-height:100vh;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:fixed;top:0;left:0;bottom:0;z-index:100}
 .sb-logo{padding:20px 16px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
 .sb-logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--green),var(--blue));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
 .sb-logo-text{font-size:15px;font-weight:700;color:var(--text)}
@@ -30,7 +36,7 @@ a{color:inherit;text-decoration:none}
 .sb-section{font-size:10px;font-weight:600;color:var(--text3);padding:8px 8px 4px;text-transform:uppercase;letter-spacing:.08em}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;color:var(--text2);transition:.15s;margin-bottom:2px}
 .nav-item:hover{background:var(--bg3);color:var(--text)}
-.nav-item.active{background:rgba(16,185,129,.15);color:var(--green)}
+.nav-item.active{background:#d1fae5;color:var(--green)}
 .nav-item .icon{font-size:16px;width:20px;text-align:center}
 .nav-item .label{font-size:13px;font-weight:500}
 .sb-footer{padding:12px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);text-align:center}
@@ -39,13 +45,14 @@ a{color:inherit;text-decoration:none}
 #main{margin-left:var(--sidebar);flex:1;display:flex;flex-direction:column;height:100vh;overflow:hidden}
 
 /* ── Topbar ── */
-#topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--bg2);border-bottom:1px solid var(--border);gap:16px;flex-shrink:0}
+#topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:#ffffff;border-bottom:1px solid var(--border);gap:16px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .topbar-title{font-size:16px;font-weight:600;color:var(--text)}
 .topbar-controls{display:flex;align-items:center;gap:10px}
 select,input[type=date]{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none}
 select:focus,input[type=date]:focus{border-color:var(--green)}
 .btn{padding:7px 14px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:500;transition:.15s}
-.btn-primary{background:var(--green);color:#000}.btn-primary:hover{background:var(--green2)}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-primary{background:var(--green);color:#fff}.btn-primary:hover{background:var(--green2)}
 .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text2)}.btn-ghost:hover{background:var(--bg3);color:var(--text)}
 .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}.dot-red{background:var(--red)}.dot-yellow{background:var(--yellow)}
@@ -65,7 +72,7 @@ select:focus,input[type=date]:focus{border-color:var(--green)}
 .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card{background:#ffffff;border:1px solid var(--border);border-radius:12px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
 .card-sm{padding:16px}
 .card-title{font-size:13px;color:var(--text2);margin-bottom:12px;font-weight:500;display:flex;align-items:center;gap:6px}
 .stat-value{font-size:28px;font-weight:700;color:var(--text)}
@@ -74,26 +81,26 @@ select:focus,input[type=date]:focus{border-color:var(--green)}
 
 /* ── Badges ── */
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
-.badge-green{background:rgba(16,185,129,.15);color:var(--green)}
-.badge-red{background:rgba(239,68,68,.15);color:var(--red)}
-.badge-yellow{background:rgba(245,158,11,.15);color:var(--yellow)}
-.badge-blue{background:rgba(59,130,246,.15);color:var(--blue)}
-.badge-purple{background:rgba(139,92,246,.15);color:var(--purple)}
-.badge-cyan{background:rgba(6,182,212,.15);color:var(--cyan)}
-.badge-gray{background:rgba(71,85,105,.3);color:var(--text2)}
+.badge-green{background:#d1fae5;color:var(--green)}
+.badge-red{background:#fee2e2;color:var(--red)}
+.badge-yellow{background:#fef3c7;color:var(--yellow)}
+.badge-blue{background:#dbeafe;color:var(--blue)}
+.badge-purple{background:#ede9fe;color:var(--purple)}
+.badge-cyan{background:#cffafe;color:var(--cyan)}
+.badge-gray{background:#e2e8f0;color:var(--text2)}
 
 /* ── Tables ── */
 .table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
 table{width:100%;border-collapse:collapse}
 th{padding:10px 16px;text-align:left;font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;background:var(--bg3);border-bottom:1px solid var(--border)}
-td{padding:12px 16px;border-bottom:1px solid rgba(30,41,59,.6);font-size:13px;vertical-align:middle}
+td{padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(26,35,53,.5)}
+tr:hover td{background:#f8fafc}
 
 /* ── Score Bars ── */
 .score-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .score-label{font-size:11px;color:var(--text2);width:28px;flex-shrink:0}
-.score-bar-track{flex:1;height:6px;background:rgba(30,41,59,.8);border-radius:3px;overflow:hidden}
+.score-bar-track{flex:1;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden}
 .score-bar-fill{height:100%;border-radius:3px;transition:.3s}
 .score-val{font-size:11px;font-weight:600;width:16px;text-align:right;flex-shrink:0}
 .score-bar-0{background:var(--red)}.score-bar-1{background:var(--yellow)}.score-bar-2{background:#84cc16}.score-bar-3{background:var(--green)}
@@ -106,7 +113,7 @@ tr:hover td{background:rgba(26,35,53,.5)}
 .rank-1{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000}
 .rank-2{background:linear-gradient(135deg,#e2e8f0,#94a3b8);color:#000}
 .rank-3{background:linear-gradient(135deg,#fb923c,#ea580c);color:#fff}
-.rank-other{background:var(--bg3);color:var(--text2)}
+.rank-other{background:#e2e8f0;color:var(--text2)}
 .stock-name{font-size:15px;font-weight:600;color:var(--text)}
 .stock-code{font-size:12px;color:var(--text2);margin-top:2px}
 .total-score{margin-left:auto;text-align:center;flex-shrink:0}
@@ -120,7 +127,7 @@ tr:hover td{background:rgba(26,35,53,.5)}
 .dim-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
 .dim-name{font-size:12px;color:var(--text2)}
 .dim-score{font-size:13px;font-weight:700}
-.dim-bar-track{height:4px;background:rgba(30,41,59,.8);border-radius:2px;overflow:hidden}
+.dim-bar-track{height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden}
 .dim-bar-fill{height:100%;border-radius:2px}
 .dim-reason{font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4}
 .info-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
@@ -135,13 +142,13 @@ tr:hover td{background:rgba(26,35,53,.5)}
 .trigger-type-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
 .trigger-summary{font-size:14px;color:var(--text);line-height:1.6;margin-bottom:12px}
 .tag-list{display:flex;flex-wrap:wrap;gap:6px}
-.tag{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:var(--blue);padding:3px 10px;border-radius:20px;font-size:11px}
+.tag{background:#dbeafe;border:1px solid #bfdbfe;color:var(--blue);padding:3px 10px;border-radius:20px;font-size:11px}
 .companies-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:10px}
 .company-group{background:var(--bg3);border-radius:8px;padding:10px 12px}
 .company-group-title{font-size:10px;color:var(--text3);margin-bottom:6px;text-transform:uppercase}
 .company-item{font-size:12px;color:var(--text2);margin-bottom:2px}
 .freshness-bar{height:4px;border-radius:2px;margin-top:10px}
-.caution-box{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:12px;color:#fca5a5;line-height:1.6}
+.caution-box{background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:12px;color:#dc2626;line-height:1.6}
 
 /* ── News ── */
 .news-item{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:8px;cursor:pointer;transition:.15s}
@@ -151,12 +158,13 @@ tr:hover td{background:rgba(26,35,53,.5)}
 .news-content{font-size:12px;color:var(--text2);line-height:1.6;display:none}
 .news-content.expanded{display:block}
 .source-badge{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600}
-.src-财联社{background:rgba(239,68,68,.15);color:#fca5a5}
-.src-东方财富{background:rgba(245,158,11,.15);color:var(--yellow)}
-.src-新浪财经{background:rgba(239,68,68,.2);color:#fca5a5}
-.src-同花顺{background:rgba(59,130,246,.15);color:var(--blue)}
-.src-财新{background:rgba(139,92,246,.15);color:var(--purple)}
-.src-财联社电报{background:rgba(6,182,212,.15);color:var(--cyan)}
+.src-财联社{background:#fee2e2;color:#dc2626}
+.src-东方财富{background:#fef3c7;color:#d97706}
+.src-新浪财经{background:#fee2e2;color:#dc2626}
+.src-同花顺{background:#dbeafe;color:#2563eb}
+.src-财新{background:#ede9fe;color:#7c3aed}
+.src-财联社电报{background:#cffafe;color:#0891b2}
+.src-国家发改委{background:#d1fae5;color:#059669}
 
 /* ── Markdown ── */
 .md-content h1,.md-content h2,.md-content h3{color:var(--text);margin:16px 0 8px;font-weight:600}
@@ -188,21 +196,86 @@ tr:hover td{background:rgba(26,35,53,.5)}
 
 /* ── Run log status ── */
 .status-pill{padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
-.status-completed{background:rgba(16,185,129,.15);color:var(--green)}
-.status-running{background:rgba(245,158,11,.15);color:var(--yellow)}
-.status-error{background:rgba(239,68,68,.15);color:var(--red)}
+.status-completed{background:#d1fae5;color:var(--green)}
+.status-running{background:#fef3c7;color:var(--yellow)}
+.status-error{background:#fee2e2;color:var(--red)}
 
-/* ── Responsive ── */
+/* ── Dark mode overrides ── */
+body.dark .card{background:var(--bg2);box-shadow:none}
+body.dark #topbar{background:var(--bg2);box-shadow:none}
+body.dark #sidebar{background:var(--bg2)}
+body.dark tr:hover td{background:rgba(26,35,53,.5)}
+body.dark .score-bar-track,body.dark .dim-bar-track{background:rgba(30,41,59,.8)}
+body.dark .rank-other{background:var(--bg3);color:var(--text2)}
+body.dark .badge-green{background:rgba(16,185,129,.15);color:var(--green)}
+body.dark .badge-red{background:rgba(239,68,68,.15);color:var(--red)}
+body.dark .badge-yellow{background:rgba(245,158,11,.15);color:var(--yellow)}
+body.dark .badge-blue{background:rgba(59,130,246,.15);color:var(--blue)}
+body.dark .badge-purple{background:rgba(139,92,246,.15);color:var(--purple)}
+body.dark .badge-cyan{background:rgba(6,182,212,.15);color:var(--cyan)}
+body.dark .badge-gray{background:rgba(71,85,105,.3);color:var(--text2)}
+body.dark .tag{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.2);color:var(--blue)}
+body.dark .src-财联社{background:rgba(239,68,68,.15);color:#fca5a5}
+body.dark .src-东方财富{background:rgba(245,158,11,.15);color:var(--yellow)}
+body.dark .src-新浪财经{background:rgba(239,68,68,.2);color:#fca5a5}
+body.dark .src-同花顺{background:rgba(59,130,246,.15);color:var(--blue)}
+body.dark .src-财新{background:rgba(139,92,246,.15);color:var(--purple)}
+body.dark .src-财联社电报{background:rgba(6,182,212,.15);color:var(--cyan)}
+body.dark .src-国家发改委{background:rgba(16,185,129,.15);color:var(--green)}
+body.dark .status-completed{background:rgba(16,185,129,.15);color:var(--green)}
+body.dark .status-running{background:rgba(245,158,11,.15);color:var(--yellow)}
+body.dark .status-error{background:rgba(239,68,68,.15);color:var(--red)}
+body.dark .nav-item.active{background:rgba(16,185,129,.15);color:var(--green)}
+body.dark .btn-primary{color:#000}
+body.dark .caution-box{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:#fca5a5}
+
+/* ── Responsive grid ── */
 @media(max-width:900px){
   .grid-4{grid-template-columns:repeat(2,1fr)}
   .grid-3{grid-template-columns:1fr 1fr}
   .dim-grid{grid-template-columns:1fr}
 }
 @media(max-width:640px){
-  :root{--sidebar:0px}
-  #sidebar{display:none}
   .grid-4,.grid-3,.grid-2{grid-template-columns:1fr}
 }
+
+/* ── Hamburger button (hidden on desktop) ── */
+#hamburger{
+  display:none;
+  align-items:center;justify-content:center;
+  width:36px;height:36px;
+  border-radius:6px;
+  border:1px solid var(--border);
+  background:var(--bg3);
+  cursor:pointer;
+  flex-direction:column;gap:5px;padding:8px;
+  flex-shrink:0;
+}
+#hamburger span{display:block;width:100%;height:2px;background:var(--text);border-radius:2px}
+
+/* ── Mobile drawer overlay ── */
+#sidebar-overlay{
+  display:none;
+  position:fixed;inset:0;
+  background:rgba(0,0,0,.55);
+  z-index:199;
+}
+
+/* ── Mobile mode (JS adds .mobile-nav to body) ── */
+body.mobile-nav{--sidebar:0px}
+body.mobile-nav #hamburger{display:flex}
+body.mobile-nav #sidebar{
+  width:260px;
+  transform:translateX(-100%);
+  transition:transform .25s cubic-bezier(.4,0,.2,1);
+  z-index:200;
+  box-shadow:6px 0 32px rgba(0,0,0,.5);
+}
+body.mobile-nav #sidebar.open{transform:translateX(0)}
+body.mobile-nav #sidebar-overlay.show{display:block}
+body.mobile-nav .page-scroll{padding:14px}
+body.mobile-nav .page-fixed{padding:14px 14px 0}
+body.mobile-nav #topbar{padding:10px 12px}
 </style>
 </head>
 <body>
@@ -220,6 +293,7 @@ tr:hover td{background:rgba(26,35,53,.5)}
     <div class="nav-item" data-page="triggers"><span class="icon">⚡</span><span class="label">触发事件</span></div>
     <div class="nav-item" data-page="review"><span class="icon">📋</span><span class="label">市场复盘</span></div>
     <div class="nav-item" data-page="news"><span class="icon">📰</span><span class="label">新闻动态</span></div>
+    <div class="nav-item" data-page="analyze"><span class="icon">🔍</span><span class="label">个股分析</span></div>
     <div class="sb-section" style="margin-top:8px">系统管理</div>
     <div class="nav-item" data-page="logs"><span class="icon">📜</span><span class="label">运行日志</span></div>
     <div class="nav-item" data-page="events"><span class="icon">🔁</span><span class="label">事件去重</span></div>
@@ -229,15 +303,23 @@ tr:hover td{background:rgba(26,35,53,.5)}
   <div class="sb-footer">Stock Agent v3</div>
 </aside>
 
+<!-- 移动端遮罩 -->
+<div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
 <!-- ══════════════════ MAIN ══════════════════ -->
 <div id="main">
   <!-- Topbar -->
   <div id="topbar">
-    <div class="topbar-title" id="page-title">控制台</div>
+    <div style="display:flex;align-items:center;gap:10px;min-width:0">
+      <button id="hamburger" onclick="toggleSidebar()" aria-label="菜单">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="topbar-title" id="page-title">控制台</div>
+    </div>
     <div class="topbar-controls">
       <select id="date-selector" onchange="onDateChange()"><option value="">加载中...</option></select>
-      <button id="run-btn" class="btn btn-primary" onclick="triggerAnalysis()">▶ 触发分析</button>
       <button class="btn btn-ghost" onclick="refreshCurrent()">↻ 刷新</button>
+      <button class="btn btn-ghost" id="theme-btn" onclick="toggleTheme()" title="切换主题" style="font-size:16px;padding:5px 10px">🌙</button>
     </div>
   </div>
 
@@ -277,10 +359,12 @@ tr:hover td{background:rgba(26,35,53,.5)}
         <div class="section-header">
           <div class="section-title">🏆 精选股票 · <span id="picks-date-label" class="badge badge-green">-</span></div>
           <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:12px;color:var(--text2)">分析批次：</span>
+            <select id="picks-date-sel" style="font-size:12px;padding:2px 6px" onchange="onPicksDateChange()"><option value="">加载中...</option></select>
+            <span style="font-size:12px;color:var(--text2)">批次：</span>
             <select id="picks-run-sel" style="font-size:12px;padding:2px 6px" onchange="onPicksRunChange()">
               <option value="">加载中...</option>
             </select>
+            <button id="picks-run-btn" class="btn btn-primary btn-sm" onclick="triggerAnalysis('picks-run-btn')">▶ 触发分析</button>
           </div>
         </div>
         <div id="picks-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
@@ -292,7 +376,10 @@ tr:hover td{background:rgba(26,35,53,.5)}
       <div class="page-scroll">
         <div class="section-header">
           <div class="section-title">⚡ 触发事件 · <span id="triggers-date-label" class="badge badge-yellow">-</span></div>
-          <div id="triggers-count" style="font-size:12px;color:var(--text2)"></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="triggers-date-sel" style="font-size:12px;padding:2px 6px" onchange="onTriggersDateChange()"><option value="">加载中...</option></select>
+            <div id="triggers-count" style="font-size:12px;color:var(--text2)"></div>
+          </div>
         </div>
         <div id="triggers-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
       </div>
@@ -318,7 +405,10 @@ tr:hover td{background:rgba(26,35,53,.5)}
       <div class="page-fixed">
         <div class="section-header">
           <div class="section-title">📰 新闻动态</div>
-          <div id="news-total" style="font-size:12px;color:var(--text2)"></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div id="news-total" style="font-size:12px;color:var(--text2)"></div>
+            <button id="news-collect-btn" class="btn btn-ghost btn-sm" onclick="triggerCollect()">📥 采集新闻</button>
+          </div>
         </div>
         <div class="filters">
           <input id="news-search" type="text" placeholder="🔍 搜索标题/内容..."
@@ -333,6 +423,7 @@ tr:hover td{background:rgba(26,35,53,.5)}
           </select>
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
             发布时间
+            <select id="news-date-sel" onchange="loadNews(1)" style="font-size:12px;padding:4px 6px"><option value="">加载中...</option></select>
             <input type="time" id="news-time-start" value="00:00" onchange="loadNews(1)"
               style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font-size:12px">
             <span>-</span>
@@ -368,9 +459,9 @@ tr:hover td{background:rgba(26,35,53,.5)}
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>日期</th><th>模式</th><th>开始时间</th><th>结束时间</th><th>耗时</th><th>状态</th><th>错误信息</th>
+                <th>日期</th><th>模式</th><th>开始时间</th><th>结束时间</th><th>耗时</th><th>状态</th><th>模型</th><th>错误信息</th>
               </tr></thead>
-              <tbody id="logs-body"><tr><td colspan="7"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+              <tbody id="logs-body"><tr><td colspan="8"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
             </table>
           </div>
         </div>
@@ -380,19 +471,22 @@ tr:hover td{background:rgba(26,35,53,.5)}
 
     <!-- ════ EVENTS ════ -->
     <div class="page" id="page-events">
-      <div class="page-scroll">
+      <div class="page-fixed">
         <div class="section-header">
           <div class="section-title">🔁 事件去重历史</div>
           <div id="events-total" style="font-size:12px;color:var(--text2)"></div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th>类型</th><th>出现次数</th><th>首次出现</th><th>最近出现</th><th>事件摘要</th>
-            </tr></thead>
-            <tbody id="events-body"><tr><td colspan="5"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
-          </table>
+        <div class="list-area">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>来源</th><th>类型</th><th>出现次数</th><th>首次出现</th><th>最近出现</th><th>事件摘要</th>
+              </tr></thead>
+              <tbody id="events-body"><tr><td colspan="6"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+            </table>
+          </div>
         </div>
+        <div class="pagination" id="events-pagination"></div>
       </div>
     </div>
 
@@ -400,18 +494,25 @@ tr:hover td{background:rgba(26,35,53,.5)}
     <div class="page" id="page-prompts">
       <div class="page-scroll">
         <div class="section-header"><div class="section-title">🧠 提示词管理</div></div>
-        <div id="prompts-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
-      </div>
-      <!-- Prompt detail modal -->
-      <div id="prompt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:none;align-items:center;justify-content:center">
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;width:min(800px,95vw);max-height:80vh;display:flex;flex-direction:column">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
-            <div style="font-weight:600" id="modal-title">提示词详情</div>
-            <button class="btn btn-ghost" onclick="closeModal()" style="padding:4px 10px">✕</button>
+        <!-- Agent 切换 tab -->
+        <div style="display:flex;gap:8px;margin-bottom:20px">
+          <button id="ptab-trigger"  class="btn btn-primary" onclick="selectPromptAgent('trigger')">⚡ 触发检测</button>
+          <button id="ptab-screener" class="btn btn-ghost"   onclick="selectPromptAgent('screener')">🏆 股票筛选</button>
+          <button id="ptab-review"   class="btn btn-ghost"   onclick="selectPromptAgent('review')">📋 市场复盘</button>
+        </div>
+        <!-- 编辑区 -->
+        <div class="card" style="margin-bottom:20px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text)">当前激活提示词</div>
+          <textarea id="prompt-editor" rows="16" style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;font-family:'Cascadia Code',Consolas,monospace;color:var(--text);line-height:1.6;resize:vertical"></textarea>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <input id="prompt-note" type="text" placeholder="版本备注（可选）" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;color:var(--text)">
+            <button class="btn btn-primary" onclick="savePromptVersion()" style="white-space:nowrap">保存为新版本</button>
           </div>
-          <div style="flex:1;overflow-y:auto;padding:20px">
-            <pre id="modal-content" style="background:var(--bg3);padding:16px;border-radius:8px;font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6;font-family:'Cascadia Code',Consolas,monospace"></pre>
-          </div>
+        </div>
+        <!-- 版本历史 -->
+        <div class="card">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text)">版本历史</div>
+          <div id="prompt-history"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
         </div>
       </div>
     </div>
@@ -424,6 +525,53 @@ tr:hover td{background:rgba(26,35,53,.5)}
           <div style="font-size:12px;color:var(--text2)">修改后点击保存立即生效</div>
         </div>
         <div id="config-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+      </div>
+    </div>
+
+    <!-- ════ ANALYZE ════ -->
+    <div class="page" id="page-analyze">
+      <div class="page-scroll">
+        <div class="section-header">
+          <div class="section-title">🔍 个股分析</div>
+        </div>
+        <!-- 输入区 -->
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <input id="analyze-input" type="text" placeholder="输入股票代码，多个用逗号分隔（如 000001,600036）"
+              style="flex:1;min-width:280px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 12px;font-size:13px"
+              onkeydown="if(event.key==='Enter')runStockAnalysis()">
+            <button class="btn btn-primary" onclick="runStockAnalysis()" id="analyze-btn">开始分析</button>
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-top:8px">提示：多个代码用逗号分隔，最多 5 只</div>
+        </div>
+        <!-- 当前分析结果 -->
+        <div id="analyze-loading" style="display:none;margin-bottom:16px">
+          <div class="card" style="text-align:center;padding:24px">
+            <div class="loading"><div class="spinner"></div> 分析中，请稍候（每只股票约需 15-30 秒）...</div>
+          </div>
+        </div>
+        <div id="analyze-results"></div>
+        <!-- 历史记录 -->
+        <div class="card" style="margin-top:24px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div class="card-title" style="margin:0">📋 历史分析记录</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:12px;color:var(--text2)">日期</span>
+              <input type="date" id="analyses-date-filter" style="font-size:12px;padding:3px 6px"
+                onchange="loadAnalysisHistory(1)">
+              <button class="btn btn-ghost btn-sm" onclick="document.getElementById('analyses-date-filter').value='';loadAnalysisHistory(1)">全部</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>时间</th><th>股票</th><th>评分</th><th>模型</th><th>操作</th>
+              </tr></thead>
+              <tbody id="analyses-history-body"><tr><td colspan="5"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+            </table>
+          </div>
+          <div id="analyses-pagination" style="padding:10px 0 2px"></div>
+        </div>
       </div>
     </div>
 
@@ -440,6 +588,7 @@ const S = {
   dates: [],
   newsPage: 1,
   logsPage: 1,
+  eventsPage: 1,
   triggerChart: null,
   newsChart: null,
 };
@@ -448,27 +597,61 @@ const PAGE_TITLES = {
   dashboard:'控制台', picks:'精选股票', triggers:'触发事件',
   review:'市场复盘', news:'新闻动态', logs:'运行日志',
   events:'事件去重历史', prompts:'提示词管理', config:'系统配置',
+  analyze:'个股分析',
 };
 
 // ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
+const MOBILE_BREAKPOINT = 768;
+
+function updateMobileNav() {
+  const isMobile = window.innerWidth < MOBILE_BREAKPOINT;
+  document.body.classList.toggle('mobile-nav', isMobile);
+  if (!isMobile) closeSidebar();
+}
+
+function toggleSidebar() {
+  const open = document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('show', open);
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('show');
+}
+
+function toggleTheme() {
+  const dark = document.body.classList.toggle('dark');
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+  document.getElementById('theme-btn').textContent = dark ? '☀️' : '🌙';
+}
+
+function applyTheme() {
+  const saved = localStorage.getItem('theme') || 'light';
+  if (saved === 'dark') {
+    document.body.classList.add('dark');
+    document.getElementById('theme-btn').textContent = '☀️';
+  }
+}
+
 async function init() {
+  applyTheme();
+  // Mobile nav detection
+  updateMobileNav();
+  window.addEventListener('resize', updateMobileNav);
+
   // Nav click handlers
   document.querySelectorAll('.nav-item').forEach(el => {
-    el.addEventListener('click', () => navigate(el.dataset.page));
+    el.addEventListener('click', () => { navigate(el.dataset.page); closeSidebar(); });
   });
   await loadDates();
-  renderPage('dashboard');
+  navigate('dashboard');
   // 若服务端仍在运行，恢复按钮 running 状态
   try {
     const d = await api('/api/run/status');
     if (d.running) {
-      const btn = document.getElementById('run-btn');
-      btn.disabled = true;
-      btn.textContent = '⏳ 运行中...';
-      btn.classList.remove('btn-primary');
-      btn.classList.add('btn-ghost');
+      _setRunBtns(true);
       _pollRunStatus();
     }
   } catch(e) {}
@@ -477,12 +660,13 @@ async function init() {
 async function loadDates() {
   const data = await api('/api/dates');
   S.dates = data.dates || [];
-  const sel = document.getElementById('date-selector');
-  sel.innerHTML = S.dates.map((d, i) => `<option value="${d}" ${i===0?'selected':''}>${d}</option>`).join('');
+  const opts = S.dates.map((d, i) => `<option value="${d}" ${i===0?'selected':''}>${d}</option>`).join('');
   if (S.dates.length) S.date = S.dates[0];
-  // Populate review date select
-  const rsel = document.getElementById('review-date-sel');
-  rsel.innerHTML = S.dates.map((d,i) => `<option value="${d}" ${i===0?'selected':''}>${d}</option>`).join('');
+  document.getElementById('date-selector').innerHTML = opts;
+  document.getElementById('review-date-sel').innerHTML = opts;
+  document.getElementById('picks-date-sel').innerHTML = opts;
+  document.getElementById('triggers-date-sel').innerHTML = opts;
+  document.getElementById('news-date-sel').innerHTML = opts;
 }
 
 function onDateChange() {
@@ -497,17 +681,30 @@ function refreshCurrent() { renderPage(S.page); }
 // ═══════════════════════════════════════════════════════
 let _runPollTimer = null;
 
-async function triggerAnalysis() {
-  const btn = document.getElementById('run-btn');
-  if (btn.disabled) return;
+const RUN_BTN_IDS = ['picks-run-btn'];
+
+function _setRunBtns(running) {
+  RUN_BTN_IDS.forEach(id => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.disabled = running;
+    if (running) {
+      b.textContent = '⏳ 运行中...';
+      b.classList.remove('btn-primary'); b.classList.add('btn-ghost');
+    } else {
+      b.classList.add('btn-primary'); b.classList.remove('btn-ghost');
+    }
+  });
+}
+
+async function triggerAnalysis(srcBtnId) {
+  const btn = document.getElementById(srcBtnId || 'run-btn');
+  if (btn && btn.disabled) return;
   try {
     const r = await fetch('/api/run/trigger', {method: 'POST'});
     if (r.status === 409) { alert('分析正在运行中，请稍候...'); return; }
     if (!r.ok) { const d = await r.json(); alert('启动失败: ' + (d.detail||r.status)); return; }
-    btn.disabled = true;
-    btn.textContent = '⏳ 运行中...';
-    btn.classList.remove('btn-primary');
-    btn.classList.add('btn-ghost');
+    _setRunBtns(true);
     _pollRunStatus();
   } catch(e) { alert('请求失败: ' + e); }
 }
@@ -518,39 +715,85 @@ function _pollRunStatus() {
     try {
       const r = await fetch('/api/run/status');
       const d = await r.json();
-      const btn = document.getElementById('run-btn');
       if (d.running) {
         _pollRunStatus();
       } else {
-        btn.disabled = false;
-        btn.classList.add('btn-primary');
-        btn.classList.remove('btn-ghost');
+        _setRunBtns(false);
         if (d.status === 'success') {
-          btn.textContent = '✓ 分析完成';
-          setTimeout(() => { btn.textContent = '▶ 触发分析'; }, 3000);
+          RUN_BTN_IDS.forEach(id => { const b = document.getElementById(id); if (b) b.textContent = '✓ 分析完成'; });
+          setTimeout(() => { RUN_BTN_IDS.forEach(id => { const b = document.getElementById(id); if (b) b.textContent = '▶ 触发分析'; }); }, 3000);
           await loadDates();
           renderPage(S.page);
         } else if (d.status === 'error') {
-          btn.textContent = '✗ 运行失败';
-          setTimeout(() => { btn.textContent = '▶ 触发分析'; }, 4000);
+          RUN_BTN_IDS.forEach(id => { const b = document.getElementById(id); if (b) b.textContent = '✗ 运行失败'; });
+          setTimeout(() => { RUN_BTN_IDS.forEach(id => { const b = document.getElementById(id); if (b) b.textContent = '▶ 触发分析'; }); }, 4000);
           alert('分析失败:\n' + (d.error || '未知错误'));
         } else {
-          btn.textContent = '▶ 触发分析';
+          RUN_BTN_IDS.forEach(id => { const b = document.getElementById(id); if (b) b.textContent = '▶ 触发分析'; });
         }
       }
     } catch(e) { _pollRunStatus(); }
   }, 3000);
 }
 
+let _collectPollTimer = null;
+
+async function triggerCollect() {
+  const btn = document.getElementById('news-collect-btn');
+  if (btn && btn.disabled) return;
+  try {
+    const r = await fetch('/api/news/collect', {method: 'POST'});
+    if (r.status === 409) { alert('新闻采集正在运行中，请稍候...'); return; }
+    if (!r.ok) { const d = await r.json(); alert('启动失败: ' + (d.detail||r.status)); return; }
+    btn.disabled = true;
+    btn.textContent = '⏳ 采集中...';
+    btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
+    _pollCollectStatus();
+  } catch(e) { alert('请求失败: ' + e); }
+}
+
+function _pollCollectStatus() {
+  if (_collectPollTimer) clearTimeout(_collectPollTimer);
+  _collectPollTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/news/collect/status');
+      const d = await r.json();
+      const btn = document.getElementById('news-collect-btn');
+      if (d.running) {
+        _pollCollectStatus();
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.classList.remove('btn-primary'); btn.classList.add('btn-ghost');
+          if (d.status === 'success') {
+            btn.textContent = '✓ 采集完成';
+            setTimeout(() => { btn.textContent = '📥 采集新闻'; }, 3000);
+            if (S.page === 'news') loadNews(1);
+          } else if (d.status === 'error') {
+            btn.textContent = '✗ 采集失败';
+            setTimeout(() => { btn.textContent = '📥 采集新闻'; }, 4000);
+            alert('采集失败:\n' + (d.error || '未知错误'));
+          } else {
+            btn.textContent = '📥 采集新闻';
+          }
+        }
+      }
+    } catch(e) { _pollCollectStatus(); }
+  }, 3000);
+}
+
 // ═══════════════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════════════
+const PAGES_WITH_DATE = new Set([]);
+
 function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(el =>
     el.classList.toggle('active', el.dataset.page === page));
   document.querySelectorAll('.page').forEach(el =>
     el.classList.toggle('active', el.id === 'page-' + page));
   document.getElementById('page-title').textContent = PAGE_TITLES[page] || page;
+  document.getElementById('date-selector').style.display = PAGES_WITH_DATE.has(page) ? '' : 'none';
   S.page = page;
   renderPage(page);
 }
@@ -563,18 +806,19 @@ function renderPage(page) {
     case 'review':    loadReview(S.date); break;
     case 'news':      loadNews(1); break;
     case 'logs':      loadLogs(1); break;
-    case 'events':    loadEvents(); break;
+    case 'events':    loadEvents(1); break;
     case 'prompts':   loadPrompts(); break;
     case 'config':    loadConfig(); break;
+    case 'analyze':   loadAnalyzePage(); break;
   }
 }
 
 // ═══════════════════════════════════════════════════════
 // API
 // ═══════════════════════════════════════════════════════
-async function api(url) {
+async function api(url, opts) {
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, opts);
     if (!r.ok) throw new Error(r.statusText);
     return await r.json();
   } catch(e) { console.error(url, e); return {}; }
@@ -719,7 +963,16 @@ function drawDoughnutChart(canvasId, data) {
 // ═══════════════════════════════════════════════════════
 // PICKS (Screener Stocks)
 // ═══════════════════════════════════════════════════════
+function onPicksDateChange() {
+  const sel = document.getElementById('picks-date-sel');
+  if (sel) S.date = sel.value;
+  loadPicks();
+}
+
 async function loadPicks() {
+  // 同步 picks-date-sel 与 S.date
+  const dsel = document.getElementById('picks-date-sel');
+  if (dsel && dsel.value !== S.date && S.dates && S.dates.includes(S.date)) dsel.value = S.date;
   document.getElementById('picks-date-label').textContent = S.date || '-';
   document.getElementById('picks-list').innerHTML = loading();
 
@@ -779,7 +1032,7 @@ function renderStockCard(s) {
       <div style="flex:1">
         <div class="stock-name">${s.stock_name}</div>
         <div class="stock-code">${s.stock_code}
-          <span class="badge badge-blue" style="margin-left:6px">${s.run_date}</span>
+          <span class="badge badge-blue" style="margin-left:6px">${s.run_id ? s.run_id.substring(0,19) : s.run_date}</span>
         </div>
       </div>
       <div class="total-score">
@@ -820,7 +1073,15 @@ function toggleCard(id) {
 // ═══════════════════════════════════════════════════════
 // TRIGGERS
 // ═══════════════════════════════════════════════════════
+function onTriggersDateChange() {
+  const sel = document.getElementById('triggers-date-sel');
+  if (sel) S.date = sel.value;
+  loadTriggers();
+}
+
 async function loadTriggers() {
+  const dsel = document.getElementById('triggers-date-sel');
+  if (dsel && dsel.value !== S.date && S.dates && S.dates.includes(S.date)) dsel.value = S.date;
   document.getElementById('triggers-date-label').textContent = S.date || '-';
   document.getElementById('triggers-list').innerHTML = loading();
   const d = await api(`/api/triggers?date=${S.date}`);
@@ -877,12 +1138,14 @@ async function loadReview(date) {
 
   const pct = (d.avg_pct_change || 0).toFixed(2);
   const sectors = Array.isArray(d.top_sectors) ? d.top_sectors : [];
+  // 直接从日期计算是否周五，不依赖数据库字段
+  const isFriday = new Date(d.run_date + 'T12:00:00').getDay() === 5;
 
   document.getElementById('review-stats').innerHTML = `
     ${statCard('上涨家数', d.market_up_count ?? '-', '今日上涨个股', '📈')}
     ${statCard('下跌家数', d.market_down_count ?? '-', '今日下跌个股', '📉')}
     ${statCard('平均涨跌幅', (pct >= 0 ? '+' : '') + pct + '%', '全市场平均', '📊')}
-    ${statCard('是否周五', d.is_friday ? '是' : '否', d.is_friday ? '包含周末分析' : '普通交易日', '📅')}
+    ${statCard('是否周五', isFriday ? '是 🎉' : '否', isFriday ? '包含周末分析' : '普通交易日', '📅')}
   `;
 
   const sectorsHtml = sectors.length ? `<div style="margin-bottom:16px">
@@ -910,6 +1173,7 @@ function onNewsSearch() {
 
 async function loadNews(page) {
   S.newsPage = page;
+  const newsDate = document.getElementById('news-date-sel').value || S.date;
   const source = document.getElementById('news-source-sel').value;
   const priority = document.getElementById('news-priority-sel').value;
   const limit = parseInt(document.getElementById('news-limit-sel').value || '50');
@@ -919,7 +1183,7 @@ async function loadNews(page) {
 
   // Load sources for this date
   if (page === 1) {
-    const srcs = await api(`/api/news/sources?date=${S.date}`);
+    const srcs = await api(`/api/news/sources?date=${newsDate}`);
     const srcSel = document.getElementById('news-source-sel');
     const cur = srcSel.value;
     srcSel.innerHTML = '<option value="">全部来源</option>' +
@@ -929,7 +1193,7 @@ async function loadNews(page) {
   const timeStart = document.getElementById('news-time-start').value;
   const timeEnd = document.getElementById('news-time-end').value;
   const q = document.getElementById('news-search').value.trim();
-  let url = `/api/news?date=${S.date}&limit=${limit}&offset=${offset}`;
+  let url = `/api/news?date=${newsDate}&limit=${limit}&offset=${offset}`;
   if (source) url += `&source=${encodeURIComponent(source)}`;
   if (priority) url += `&priority=${priority}`;
   if (timeStart) url += `&time_start=${timeStart}`;
@@ -984,6 +1248,15 @@ async function loadLogs(page) {
   document.getElementById('logs-body').innerHTML = items.map(r => {
     const dur = calcDuration(r.started_at, r.finished_at);
     const st = r.status || 'running';
+    let modelsHtml = '';
+    if (r.models) {
+      try {
+        const m = typeof r.models === 'string' ? JSON.parse(r.models) : r.models;
+        modelsHtml = Object.entries(m).map(([agent, model]) =>
+          `<div style="white-space:nowrap;font-size:11px;color:var(--text2)">${agent}: <span style="color:var(--text)">${model}</span></div>`
+        ).join('');
+      } catch(e) { modelsHtml = r.models; }
+    }
     return `<tr>
       <td>${r.run_date}</td>
       <td><span class="badge badge-blue">${r.run_mode}</span></td>
@@ -991,9 +1264,10 @@ async function loadLogs(page) {
       <td style="color:var(--text2)">${fmt_time(r.finished_at)}</td>
       <td style="color:var(--text3)">${dur}</td>
       <td><span class="status-pill status-${st}">${st}</span></td>
+      <td>${modelsHtml}</td>
       <td style="color:var(--red2);font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.error_msg || ''}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7"><div class="empty">暂无运行记录</div></td></tr>';
+  }).join('') || '<tr><td colspan="8"><div class="empty">暂无运行记录</div></td></tr>';
 
   const totalPages = Math.ceil(total / limit);
   document.getElementById('logs-pagination').innerHTML = renderPagination(page, totalPages, 'loadLogs');
@@ -1002,88 +1276,247 @@ async function loadLogs(page) {
 // ═══════════════════════════════════════════════════════
 // EVENTS
 // ═══════════════════════════════════════════════════════
-async function loadEvents() {
-  const d = await api('/api/event-history?limit=200');
+async function loadEvents(page) {
+  S.eventsPage = page;
+  const limit = 50;
+  const offset = (page - 1) * limit;
+  const d = await api(`/api/event-history?limit=${limit}&offset=${offset}`);
   const items = d.items || [];
-  document.getElementById('events-total').textContent = `共 ${items.length} 条去重记录`;
+  const total = d.total || 0;
+  document.getElementById('events-total').textContent = `共 ${total} 条去重记录`;
   document.getElementById('events-body').innerHTML = items.map(e => `<tr>
+    <td>${e.source ? `<span class="badge source-badge src-${e.source}">${e.source}</span>` : '<span style="color:var(--text2)">-</span>'}</td>
     <td><span class="badge badge-purple">${e.event_type || '-'}</span></td>
     <td style="text-align:center"><span class="badge badge-blue">${e.seen_count ?? 1}</span></td>
     <td style="color:var(--text2);white-space:nowrap">${e.first_seen || '-'}</td>
     <td style="color:var(--text2);white-space:nowrap">${e.last_seen || '-'}</td>
     <td style="color:var(--text);max-width:400px">${e.summary || '-'}</td>
-  </tr>`).join('') || '<tr><td colspan="5"><div class="empty">暂无事件记录</div></td></tr>';
+  </tr>`).join('') || '<tr><td colspan="6"><div class="empty">暂无事件记录</div></td></tr>';
+  const totalPages = Math.ceil(total / limit);
+  document.getElementById('events-pagination').innerHTML = renderPagination(page, totalPages, 'loadEvents');
 }
 
 // ═══════════════════════════════════════════════════════
 // PROMPTS
 // ═══════════════════════════════════════════════════════
+let _promptsData = [];
+let _currentPromptAgent = 'trigger';
+
 async function loadPrompts() {
-  document.getElementById('prompts-list').innerHTML = loading();
   const d = await api('/api/prompts');
-  const items = d.items || [];
-  if (!items.length) { document.getElementById('prompts-list').innerHTML = empty('暂无提示词数据'); return; }
+  _promptsData = d.items || [];
+  selectPromptAgent(_currentPromptAgent);
+}
 
-  // Group by agent
-  const groups = {};
-  items.forEach(p => {
-    const ag = p.agent_name || 'unknown';
-    if (!groups[ag]) groups[ag] = [];
-    groups[ag].push(p);
+function selectPromptAgent(agent) {
+  _currentPromptAgent = agent;
+  ['trigger','screener','review'].forEach(a => {
+    const btn = document.getElementById('ptab-' + a);
+    if (btn) btn.className = 'btn ' + (a === agent ? 'btn-primary' : 'btn-ghost');
   });
-
-  const agentIcon = { trigger: '⚡', screener: '🏆', review: '📋' };
-  const agentLabel = { trigger: '触发检测', screener: '股票筛选', review: '市场复盘' };
-
-  document.getElementById('prompts-list').innerHTML = Object.entries(groups).map(([ag, list]) => `
-    <div style="margin-bottom:24px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-        <span style="font-size:20px">${agentIcon[ag]||'🧠'}</span>
-        <span style="font-size:15px;font-weight:600;color:var(--text)">${agentLabel[ag]||ag} Agent</span>
-        <span class="badge badge-gray">${list.length} 个版本</span>
-      </div>
-      <div class="grid-3">
-        ${list.map(p => `<div class="card card-sm">
-          <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
-            <div style="flex:1">
-              <div style="font-size:13px;font-weight:600;color:var(--text)">${p.prompt_name}</div>
-              <div style="font-size:11px;color:var(--text3);margin-top:2px">${p.created_at?.substring(0,10) || ''}</div>
-            </div>
-            <span class="badge ${p.is_active ? 'badge-green' : 'badge-gray'}">${p.is_active ? '激活' : '归档'}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
-            <span class="badge badge-blue">v${p.version}</span>
-            <span style="font-size:11px;color:var(--text3)">${p.content_length || 0} 字符</span>
-          </div>
-          ${p.note ? `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">${p.note}</div>` : ''}
-          <button class="btn btn-ghost" style="width:100%;font-size:12px" onclick="showPrompt(${p.id})">查看全文</button>
-        </div>`).join('')}
-      </div>
-    </div>
-  `).join('');
+  _renderPromptAgent(agent);
 }
 
-async function showPrompt(id) {
+async function _renderPromptAgent(agent) {
+  const list = _promptsData.filter(p => p.agent_name === agent && p.prompt_name === 'system_prompt');
+  // Fill editor with active prompt full content
+  const active = list.find(p => p.is_active) || list[0];
+  if (active) {
+    const d = await api(`/api/prompts/${active.id}`);
+    document.getElementById('prompt-editor').value = d.content || '';
+  } else {
+    document.getElementById('prompt-editor').value = '';
+  }
+  document.getElementById('prompt-note').value = '';
+
+  // Render history table
+  if (!list.length) {
+    document.getElementById('prompt-history').innerHTML = empty('暂无版本记录');
+    return;
+  }
+  document.getElementById('prompt-history').innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">版本</th>
+        <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">保存时间</th>
+        <th style="text-align:right;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">字符数</th>
+        <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">备注</th>
+        <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">状态</th>
+        <th style="text-align:center;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">操作</th>
+      </tr></thead>
+      <tbody>
+        ${list.map(p => `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;font-size:12px"><span class="badge badge-blue">${p.version}</span></td>
+          <td style="padding:8px 10px;font-size:12px;color:var(--text2)">${p.created_at || ''}</td>
+          <td style="padding:8px 10px;font-size:12px;color:var(--text2);text-align:right">${p.content_length || 0}</td>
+          <td style="padding:8px 10px;font-size:12px;color:var(--text2)">${p.note || ''}</td>
+          <td style="padding:8px 10px">
+            ${p.is_active
+              ? '<span class="badge badge-green">当前版本</span>'
+              : `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="activatePromptVersion(${p.id})">激活</button>`}
+          </td>
+          <td style="padding:8px 10px;text-align:center">
+            <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="previewPromptVersion(${p.id})">查看</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function savePromptVersion() {
+  const content = document.getElementById('prompt-editor').value.trim();
+  const note    = document.getElementById('prompt-note').value.trim();
+  if (!content) { alert('提示词内容不能为空'); return; }
+  await api('/api/prompts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent_name: _currentPromptAgent, prompt_name: 'system_prompt', content, note }),
+  });
+  const d = await api('/api/prompts');
+  _promptsData = d.items || [];
+  _renderPromptAgent(_currentPromptAgent);
+}
+
+async function activatePromptVersion(id) {
+  await api(`/api/prompts/${id}/activate`, { method: 'POST' });
+  const d = await api('/api/prompts');
+  _promptsData = d.items || [];
+  _renderPromptAgent(_currentPromptAgent);
+}
+
+async function previewPromptVersion(id) {
   const d = await api(`/api/prompts/${id}`);
-  document.getElementById('modal-title').textContent = `${d.agent_name} · ${d.prompt_name} · v${d.version}`;
-  document.getElementById('modal-content').textContent = d.content || '无内容';
-  document.getElementById('prompt-modal').style.display = 'flex';
-}
-
-function closeModal() {
-  document.getElementById('prompt-modal').style.display = 'none';
+  const el = document.getElementById('prompt-editor');
+  el.value = d.content || '';
+  el.style.transition = 'outline 0s';
+  el.style.outline = '2px solid var(--accent)';
+  setTimeout(() => {
+    el.style.transition = 'outline 0.8s ease';
+    el.style.outline = '2px solid transparent';
+  }, 50);
 }
 
 // ═══════════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════════
+const NEWS_SOURCES_ALL = ['财联社','东方财富','同花顺','新浪财经','财联社电报','国家发改委','财新'];
+
+// 新闻配置卡片的时间选项（可扩展）
+const NEWS_HOURS_OPTIONS_SCREENER = [[0,'仅当天（0点起）'],[12,'过去12小时'],[24,'过去24小时（含昨天）'],[36,'过去36小时'],[48,'过去48小时（含前天）']];
+const NEWS_HOURS_OPTIONS_ANALYST  = [[24,'过去24小时'],[48,'过去48小时'],[72,'过去72小时（近3天）'],[120,'过去120小时（近5天）'],[168,'过去168小时（近7天）']];
+
+function _renderScheduleConfigCard(items) {
+  const get = key => items.find(c => c.key === key);
+  const val = key => get(key)?.value || '';
+
+  const DAYS = [{v:'1',l:'周一'},{v:'2',l:'周二'},{v:'3',l:'周三'},{v:'4',l:'周四'},{v:'5',l:'周五'},{v:'6',l:'周六'},{v:'7',l:'周日'}];
+  const triggerDaySet = new Set((val('schedule_trigger_days')||'').split(',').map(s=>s.trim()).filter(Boolean));
+  const reviewDaySet  = new Set((val('schedule_review_days') ||'').split(',').map(s=>s.trim()).filter(Boolean));
+
+  const dayCheckboxes = (id, checkedSet) => DAYS.map(d => `
+    <label style="display:inline-flex;align-items:center;gap:4px;margin:4px 10px 4px 0;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="sched-${id}-day-${d.v}" ${checkedSet.has(d.v)?'checked':''} style="accent-color:var(--green)">
+      ${d.l}
+    </label>`).join('');
+
+  const timeRow = (id, labelText, hourKey, minuteKey) => {
+    const h = parseInt(val(hourKey)||'9');
+    const m = parseInt(val(minuteKey)||'0');
+    const hourOpts  = Array.from({length:24},(_,i)=>`<option value="${i}" ${i===h?'selected':''}>${String(i).padStart(2,'0')}</option>`).join('');
+    const minOpts   = [0,5,10,15,20,25,30,35,40,45,50,55].map(i=>`<option value="${i}" ${i===m?'selected':''}>${String(i).padStart(2,'0')}</option>`).join('');
+    return `
+      <div style="margin-bottom:14px">
+        <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:8px">${labelText}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:13px;color:var(--text2)">时间</span>
+          <select id="sched-${id}-hour" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px">${hourOpts}</select>
+          <span style="color:var(--text2)">:</span>
+          <select id="sched-${id}-min"  style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px">${minOpts}</select>
+          <span style="font-size:13px;color:var(--text2);margin-left:10px">执行日期</span>
+        </div>
+        <div style="margin-top:8px">${dayCheckboxes(id, id==='trigger'?triggerDaySet:reviewDaySet)}</div>
+      </div>`;
+  };
+
+  return `<div class="card" style="max-width:640px;margin-bottom:16px">
+    <div style="font-weight:600;font-size:14px;margin-bottom:4px">⏰ 定时调度配置</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px">设置每天触发分析和复盘的时间及执行日，重启 agent 容器后生效</div>
+    ${timeRow('trigger','触发+精筛','schedule_trigger_hour','schedule_trigger_minute')}
+    <div style="height:1px;background:var(--border);margin:4px 0 14px"></div>
+    ${timeRow('review','收盘复盘','schedule_review_hour','schedule_review_minute')}
+    <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+      <button class="btn btn-green" style="font-size:13px;padding:6px 18px" onclick="saveScheduleConfig()">保存调度配置</button>
+      <span id="sched-tip" style="display:none;font-size:12px;color:var(--green)">已保存，重启 agent 生效</span>
+    </div>
+  </div>`;
+}
+
+function _renderNewsConfigCard({id, title, desc, srcKey, hoursKey, checkedSources, currentHours, hoursOptions, saveFn}) {
+  const checkboxHtml = NEWS_SOURCES_ALL.map(src => `
+    <label style="display:inline-flex;align-items:center;gap:5px;margin:4px 8px 4px 0;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="${id}-chk-${src}" value="${src}"
+        ${checkedSources.has(src) ? 'checked' : ''}
+        style="width:14px;height:14px;cursor:pointer">
+      ${src}
+    </label>`).join('');
+
+  const selectHtml = hoursOptions.map(([v, label]) =>
+    `<option value="${v}" ${currentHours === v ? 'selected' : ''}>${label}</option>`
+  ).join('');
+
+  return `
+    <div class="card" style="max-width:640px;margin-bottom:16px">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">${title}</div>
+        <div style="font-size:12px;color:var(--text2)">${desc}</div>
+      </div>
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-weight:500">参与渠道（不勾选 = 所有渠道）</div>
+        <div>${checkboxHtml}</div>
+      </div>
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+        <div style="font-size:12px;color:var(--text3);font-weight:500;white-space:nowrap">时间范围</div>
+        <select id="${id}-hours-sel"
+          style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:13px">
+          ${selectHtml}
+        </select>
+      </div>
+      <div style="padding:12px 16px;display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="${saveFn}('${id}','${srcKey}','${hoursKey}')">保存配置</button>
+        <span id="${id}-tip" style="font-size:12px;color:var(--green);display:none">已保存</span>
+      </div>
+    </div>`;
+}
+
 async function loadConfig() {
   document.getElementById('config-list').innerHTML = loading();
   const d = await api('/api/config');
   const items = d.items || [];
   if (!items.length) { document.getElementById('config-list').innerHTML = empty('暂无配置项'); return; }
-  document.getElementById('config-list').innerHTML = `
-    <div class="card" style="max-width:640px">
+
+  const SPECIAL_KEYS = new Set(['screener_news_sources','screener_news_lookback_hours','analyst_news_sources','analyst_news_lookback_hours','schedule_trigger_hour','schedule_trigger_minute','schedule_trigger_days','schedule_review_hour','schedule_review_minute','schedule_review_days']);
+  const generalItems = items.filter(c => !SPECIAL_KEYS.has(c.key));
+
+  const get = key => items.find(c => c.key === key);
+  const srcSet = key => new Set((get(key)?.value || '').split(',').map(s => s.trim()).filter(Boolean));
+  const hrs    = key => parseInt(get(key)?.value || '0');
+
+  const screenerCard = _renderNewsConfigCard({
+    id: 'screener', title: '📰 初筛新闻配置', desc: '触发分析时参与初筛的新闻渠道和时间范围',
+    srcKey: 'screener_news_sources', hoursKey: 'screener_news_lookback_hours',
+    checkedSources: srcSet('screener_news_sources'), currentHours: hrs('screener_news_lookback_hours'),
+    hoursOptions: NEWS_HOURS_OPTIONS_SCREENER, saveFn: 'saveNewsConfig',
+  });
+
+  const analystCard = _renderNewsConfigCard({
+    id: 'analyst', title: '🔍 个股分析新闻配置', desc: '个股分析时用于检索相关新闻的渠道和时间范围',
+    srcKey: 'analyst_news_sources', hoursKey: 'analyst_news_lookback_hours',
+    checkedSources: srcSet('analyst_news_sources'), currentHours: hrs('analyst_news_lookback_hours'),
+    hoursOptions: NEWS_HOURS_OPTIONS_ANALYST, saveFn: 'saveNewsConfig',
+  });
+
+  const generalTable = generalItems.length ? `
+    <div class="card" style="max-width:640px;margin-top:4px">
       <table style="width:100%;border-collapse:collapse">
         <thead><tr style="border-bottom:1px solid var(--border)">
           <th style="text-align:left;padding:8px 12px;font-size:12px;color:var(--text3);font-weight:500">配置项</th>
@@ -1092,7 +1525,7 @@ async function loadConfig() {
           <th style="width:72px"></th>
         </tr></thead>
         <tbody>
-          ${items.map(c => `<tr style="border-bottom:1px solid var(--border)">
+          ${generalItems.map(c => `<tr style="border-bottom:1px solid var(--border)">
             <td style="padding:10px 12px;font-size:13px;color:var(--text);font-weight:500">${c.label || c.key}</td>
             <td style="padding:10px 12px;font-size:12px;color:var(--text2)">${c.note || '-'}</td>
             <td style="padding:10px 12px;text-align:center">
@@ -1107,7 +1540,46 @@ async function loadConfig() {
         </tbody>
       </table>
       <div style="font-size:11px;color:var(--text3);padding:10px 12px">更新时间：${items[0]?.updated_at || '-'}</div>
-    </div>`;
+    </div>` : '';
+
+  const scheduleCard = _renderScheduleConfigCard(items);
+  document.getElementById('config-list').innerHTML = scheduleCard + screenerCard + analystCard + generalTable;
+}
+
+async function saveScheduleConfig() {
+  const DAYS = ['1','2','3','4','5','6','7'];
+  const getCheckedDays = id => DAYS.filter(d => document.getElementById(`sched-${id}-day-${d}`)?.checked).join(',');
+  const pairs = [
+    ['schedule_trigger_hour',   document.getElementById('sched-trigger-hour').value],
+    ['schedule_trigger_minute', document.getElementById('sched-trigger-min').value],
+    ['schedule_trigger_days',   getCheckedDays('trigger')],
+    ['schedule_review_hour',    document.getElementById('sched-review-hour').value],
+    ['schedule_review_minute',  document.getElementById('sched-review-min').value],
+    ['schedule_review_days',    getCheckedDays('review')],
+  ];
+  try {
+    await Promise.all(pairs.map(([key, value]) =>
+      fetch(`/api/config/${key}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value})})
+    ));
+    const tip = document.getElementById('sched-tip');
+    tip.style.display = 'inline';
+    setTimeout(() => tip.style.display = 'none', 3000);
+  } catch(e) { alert('保存失败: ' + e); }
+}
+
+async function saveNewsConfig(id, srcKey, hoursKey) {
+  const checked = NEWS_SOURCES_ALL.filter(src => document.getElementById(`${id}-chk-${src}`)?.checked);
+  const sourcesVal = checked.join(',');
+  const hoursVal = document.getElementById(`${id}-hours-sel`).value;
+  try {
+    await Promise.all([
+      fetch(`/api/config/${srcKey}`,   {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value: sourcesVal})}),
+      fetch(`/api/config/${hoursKey}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value: hoursVal})}),
+    ]);
+    const tip = document.getElementById(`${id}-tip`);
+    tip.style.display = 'inline';
+    setTimeout(() => tip.style.display = 'none', 2000);
+  } catch(e) { alert('保存失败: ' + e); }
 }
 
 async function saveConfig(key) {
@@ -1175,10 +1647,242 @@ function empty(msg) {
   return `<div class="empty">📭 ${msg}</div>`;
 }
 
-// Close modal on backdrop click
-document.getElementById('prompt-modal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeModal();
-});
+
+// ═══════════════════════════════════════════════════════
+// STOCK ANALYSIS
+// ═══════════════════════════════════════════════════════
+function loadAnalyzePage() {
+  // 默认设置为今天
+  const df = document.getElementById('analyses-date-filter');
+  if (df && !df.value) df.value = new Date().toISOString().slice(0, 10);
+  loadAnalysisHistory(1);
+  document.getElementById('analyze-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') runStockAnalysis();
+  }, { once: true });
+}
+
+async function runStockAnalysis() {
+  const input = document.getElementById('analyze-input').value.trim();
+  if (!input) return;
+  const codes = input.split(/[,，\s]+/).map(c => c.trim()).filter(Boolean);
+  if (codes.length === 0 || codes.length > 5) {
+    alert('请输入 1-5 个股票代码');
+    return;
+  }
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.textContent = '分析中...';
+  document.getElementById('analyze-loading').style.display = '';
+  document.getElementById('analyze-results').innerHTML = '';
+  try {
+    const result = await fetch('/api/analyze-stocks', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({codes}),
+    });
+    if (!result.ok) {
+      const err = await result.json().catch(() => ({}));
+      throw new Error(err.detail || result.statusText);
+    }
+    const data = await result.json();
+    renderAnalysisCards(data);
+    loadAnalysisHistory();
+  } catch(e) {
+    document.getElementById('analyze-results').innerHTML =
+      `<div class="card"><div class="empty" style="color:var(--red)">分析失败：${e.message}</div></div>`;
+  } finally {
+    document.getElementById('analyze-loading').style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = '开始分析';
+  }
+}
+
+const SCORE_DIMS = [
+  ['D1_龙头地位', '龙头地位'],
+  ['D2_近期催化', '近期催化'],
+  ['D3_股东结构', '股东结构'],
+  ['D4_上涨趋势', '上涨趋势'],
+  ['D5_技术突破', '技术突破'],
+  ['D6_估值合理', '估值合理'],
+];
+
+function renderScoreBar(scores) {
+  if (!scores || !Object.keys(scores).length) return '';
+  const total = Object.values(scores).reduce((s, v) => s + (v?.score ?? 0), 0);
+  const bars = SCORE_DIMS.map(([key, label]) => {
+    const d = scores[key] || {};
+    const sc = d.score ?? '-';
+    const reason = d.reason || '';
+    const cls = sc !== '-' ? `score-bar-${sc}` : 'score-bar-0';
+    const pct = sc !== '-' ? (sc / 3 * 100) : 0;
+    return `<div class="score-row" title="${key}：${reason}">
+      <span class="score-label" style="width:56px;font-size:11px;color:var(--text2)">${label}</span>
+      <div class="score-bar-track" style="flex:1">
+        <div class="score-bar-fill ${cls}" style="width:${pct}%"></div>
+      </div>
+      <span class="score-val">${sc}</span>
+      <span style="font-size:11px;color:var(--text2);margin-left:6px;min-width:80px">${reason}</span>
+    </div>`;
+  }).join('');
+  const totalColor = total >= 14 ? 'var(--green)' : total >= 9 ? 'var(--yellow)' : 'var(--red)';
+  return `<div style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span style="font-size:13px;font-weight:600;color:var(--text)">六维评分</span>
+      <span style="font-size:20px;font-weight:700;color:${totalColor}">${total} <span style="font-size:12px;color:var(--text2)">/ 18</span></span>
+    </div>
+    ${bars}
+  </div>`;
+}
+
+function renderAnalysisCards(data) {
+  const results = data.results || [];
+  if (!results.length) {
+    document.getElementById('analyze-results').innerHTML = '<div class="card"><div class="empty">无分析结果</div></div>';
+    return;
+  }
+  const html = results.map(item => {
+    const basic = item.raw_data?.basic || {};
+    const tech = item.raw_data?.technical || {};
+    const vol = item.raw_data?.volume || {};
+    const sh = item.raw_data?.shareholders || {};
+    const fin = item.raw_data?.financial || {};
+    const shChip = sh['筹码结构分析'] || {};
+    const finRecent = (fin['财务摘要(近4期)'] || [{}])[0];
+    const newsCount = (item.raw_data?.news || []).length;
+
+    const metaRow = (icon, label, val) => val
+      ? `<div style="display:flex;gap:6px;align-items:baseline;margin-bottom:4px"><span style="color:var(--text2);font-size:12px">${icon} ${label}</span><span style="font-size:12px">${val}</span></div>`
+      : '';
+
+    const basicStr = [
+      basic['总市值(亿)'] ? `市值 ${basic['总市值(亿)']}亿` : '',
+      basic['今日涨跌幅(%)'] !== undefined ? `涨跌 ${basic['今日涨跌幅(%)']}%` : '',
+      basic['换手率(%)'] !== undefined ? `换手 ${basic['换手率(%)']}%` : '',
+    ].filter(Boolean).join(' | ');
+
+    const techStr = [
+      tech['趋势描述'] || '',
+      tech['MA60'] ? `MA60=${tech['MA60']}` : '',
+    ].filter(Boolean).join(' | ');
+
+    const volStr = [
+      vol['量比(3日/20日)'] ? `量比 ${vol['量比(3日/20日)']}x` : '',
+      vol['d5_score'] !== undefined ? `D5=${vol['d5_score']}分` : '',
+      vol['d5_desc'] || '',
+    ].filter(Boolean).join(' | ');
+
+    const shStr = [
+      shChip['私募+个人持股(%)'] ? `私募+个人 ${shChip['私募+个人持股(%)']}%` : '',
+      shChip['D3得分'] !== undefined ? `D3=${shChip['D3得分']}分` : '',
+    ].filter(Boolean).join(' | ');
+
+    const finStr = [
+      finRecent['净利率'] ? `净利率 ${finRecent['净利率']}` : '',
+      finRecent['毛利率'] ? `毛利率 ${finRecent['毛利率']}` : '',
+      finRecent['净资产收益率(ROE)'] ? `ROE ${finRecent['净资产收益率(ROE)']}` : '',
+    ].filter(Boolean).join(' | ');
+
+    const errorBadge = item.error
+      ? `<div style="color:var(--red);font-size:12px;margin-bottom:8px">LLM 错误：${item.error}</div>` : '';
+
+    const recRisk = (item.recommendation || item.risk)
+      ? `<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px">
+          ${item.recommendation ? `<div style="margin-bottom:4px"><span style="color:var(--green)">综合：</span>${item.recommendation}</div>` : ''}
+          ${item.risk ? `<div><span style="color:var(--red)">风险：</span>${item.risk}</div>` : ''}
+        </div>` : '';
+
+    return `<div class="card" style="margin-bottom:16px">
+      <div style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--text);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${item.name || item.code}
+        <span class="badge badge-blue">${item.code}</span>
+        ${newsCount > 0 ? `<span class="badge badge-cyan">📰 ${newsCount}条新闻</span>` : ''}
+        <span style="font-size:11px;color:var(--text2);margin-left:auto">${data.analyzed_at || ''}</span>
+      </div>
+      ${renderScoreBar(item.scores)}
+      ${recRisk}
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:12px">
+        ${metaRow('📊','基本信息：', basicStr)}
+        ${metaRow('📈','技术面：', techStr)}
+        ${metaRow('📦','量价：', volStr)}
+        ${metaRow('🏦','筹码：', shStr)}
+        ${metaRow('💰','财务：', finStr)}
+      </div>
+      ${errorBadge}
+      ${item.report ? `<div class="card-title" style="margin-bottom:6px">📝 AI 综合评估</div>
+        <div class="md-content">${typeof marked !== 'undefined' ? marked.parse(item.report) : `<pre style="white-space:pre-wrap;font-size:12px;line-height:1.6">${item.report}</pre>`}</div>` : ''}
+    </div>`;
+  }).join('');
+  document.getElementById('analyze-results').innerHTML = html;
+}
+
+async function loadAnalysisHistory(page) {
+  page = page || 1;
+  const limit = 10;
+  const offset = (page - 1) * limit;
+  const date = document.getElementById('analyses-date-filter')?.value || '';
+  let url = `/api/analyses?limit=${limit}&offset=${offset}`;
+  if (date) url += `&date=${date}`;
+  const data = await api(url);
+  const items = data.items || [];
+  const total = data.total || 0;
+  const totalPages = Math.ceil(total / limit);
+  document.getElementById('analyses-pagination').innerHTML = renderPagination(page, totalPages, 'loadAnalysisHistory');
+  const tbody = document.getElementById('analyses-history-body');
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty">暂无历史分析</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map(item => {
+    // 解析 scores_summary：[{code, name, total_score}, ...]
+    let summary = [];
+    try {
+      summary = typeof item.scores_summary === 'string'
+        ? JSON.parse(item.scores_summary)
+        : (item.scores_summary || []);
+    } catch(e) {}
+
+    // 股票列：name(code) 每行一个
+    const stockCell = summary.length
+      ? summary.map(s => {
+          const name = s.name || s.code;
+          const code = s.code;
+          return `<div style="white-space:nowrap">${name} <span style="color:var(--text2);font-size:11px">${code}</span></div>`;
+        }).join('')
+      : (() => {
+          try {
+            const arr = typeof item.codes === 'string' ? JSON.parse(item.codes) : (item.codes || []);
+            return arr.map(c => `<div>${c}</div>`).join('');
+          } catch(e) { return String(item.codes); }
+        })();
+
+    // 评分列：total_score，颜色分档
+    const scoreCell = summary.length
+      ? summary.map(s => {
+          const sc = s.total_score;
+          if (sc == null) return `<div style="color:var(--text2);font-size:11px">LLM失败</div>`;
+          const color = sc >= 14 ? 'var(--green)' : sc >= 9 ? 'var(--yellow)' : 'var(--red)';
+          return `<div style="font-weight:600;color:${color}">${sc}<span style="font-size:10px;color:var(--text2)">/18</span></div>`;
+        }).join('')
+      : '<div style="color:var(--text2)">-</div>';
+
+    return `<tr>
+      <td style="color:var(--text2);white-space:nowrap;font-size:12px">${item.analyzed_at || '-'}</td>
+      <td>${stockCell}</td>
+      <td>${scoreCell}</td>
+      <td><span class="badge badge-gray" style="font-size:11px">${item.model || '-'}</span></td>
+      <td><button class="btn btn-ghost" style="padding:3px 10px;font-size:12px" onclick="viewAnalysis(${item.id})">查看</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function viewAnalysis(id) {
+  const row = await api(`/api/analyses/${id}`);
+  if (!row || !row.results) return;
+  document.getElementById('analyze-results').innerHTML = '';
+  // row.results 是完整的 {results:[...], analyzed_at, model} 对象
+  renderAnalysisCards(row.results);
+  document.getElementById('page-analyze').querySelector('.page-scroll').scrollTo({top: 0, behavior:'smooth'});
+}
 
 // ═══════════════════════════════════════════════════════
 // START

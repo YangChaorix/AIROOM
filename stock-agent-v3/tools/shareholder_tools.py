@@ -3,6 +3,8 @@
 用于 screener_agent D3 维度评分
 """
 
+import tools.proxy_patch  # noqa: F401 — 修复 Clash Fake-IP 模式下 requests 走系统代理的问题
+
 import json
 import traceback
 from datetime import datetime

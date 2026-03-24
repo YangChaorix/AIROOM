@@ -1,0 +1,35 @@
+services:
+
+  # ── Web Dashboard ──────────────────────────────────────────────────────────
+  web:
+    image: stock-agent-v3:latest
+    command: python web_server.py
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data:/app/data          # SQLite DB 持久化
+      - ./logs:/app/logs          # 日志持久化
+      - ./.env:/app/.env:ro       # API Keys（只读）
+      - ./config/models.json:/app/config/models.json:ro  # 模型配置（只读）
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/api/config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+
+  # ── Scheduler（定时触发 + 采集） ────────────────────────────────────────────
+  agent:
+    image: stock-agent-v3:latest
+    command: python main.py --schedule
+    volumes:
+      - ./data:/app/data          # 与 web 共享同一 DB
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+      - ./config/models.json:/app/config/models.json:ro
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy

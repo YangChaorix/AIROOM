@@ -302,25 +302,45 @@ def cmd_schedule() -> None:
         sys.exit(1)
 
     from graph.workflow import run_workflow
+    from tools.db import db as _sched_db
+
+    # 从 DB 读取调度配置（支持运行时修改后重启生效）
+    def _int(key, default): return int(_sched_db.get_config(key, default) or default)
+    def _days(key, default):
+        raw = (_sched_db.get_config(key, default) or default).strip()
+        return raw if raw else None  # None = 每天
+
+    trigger_hour   = _int("schedule_trigger_hour",   9)
+    trigger_minute = _int("schedule_trigger_minute", 15)
+    trigger_days   = _days("schedule_trigger_days",  "1,2,3,4,5")
+    review_hour    = _int("schedule_review_hour",    15)
+    review_minute  = _int("schedule_review_minute",  35)
+    review_days    = _days("schedule_review_days",   "1,2,3,4,5")
 
     scheduler = BlockingScheduler(timezone="Asia/Shanghai")
 
     def job_morning():
-        logger.info("[定时任务] 09:15 触发+精筛 启动")
+        logger.info(f"[定时任务] {trigger_hour:02d}:{trigger_minute:02d} 触发+精筛 启动")
         state = run_workflow(run_mode="full")
         _print_trigger_result(state)
         _print_screener_result(state)
 
     def job_review():
-        logger.info("[定时任务] 15:35 复盘 启动")
+        logger.info(f"[定时任务] {review_hour:02d}:{review_minute:02d} 复盘 启动")
         state = run_workflow(run_mode="review_only")
         _print_review_result(state)
 
     scheduler.add_job(
-        job_morning, "cron", hour=9, minute=15, id="morning_job", name="触发+精筛（09:15）"
+        job_morning, "cron",
+        hour=trigger_hour, minute=trigger_minute,
+        day_of_week=trigger_days,
+        id="morning_job", name=f"触发+精筛（{trigger_hour:02d}:{trigger_minute:02d} 周{trigger_days or '每天'}）"
     )
     scheduler.add_job(
-        job_review, "cron", hour=15, minute=35, id="review_job", name="每日复盘（15:35）"
+        job_review, "cron",
+        hour=review_hour, minute=review_minute,
+        day_of_week=review_days,
+        id="review_job", name=f"每日复盘（{review_hour:02d}:{review_minute:02d} 周{review_days or '每天'}）"
     )
 
     # 新闻采集：单一 job，时段/间隔过滤由 is_source_due() 内部处理
@@ -343,8 +363,8 @@ def cmd_schedule() -> None:
           f"间隔: {settings.agent.collect_interval_medium}m")
     print(f"    LOW   活跃时段: {settings.agent.collect_low_hours}  "
           f"间隔: {settings.agent.collect_interval_low}m")
-    print("  09:15       - 触发Agent + 精筛Agent（读缓存）")
-    print("  15:35       - 复盘Agent")
+    print(f"  {trigger_hour:02d}:{trigger_minute:02d} (周{trigger_days or '每天'}) - 触发Agent + 精筛Agent")
+    print(f"  {review_hour:02d}:{review_minute:02d} (周{review_days or '每天'}) - 复盘Agent")
     print("按 Ctrl+C 停止")
     print("=" * 60)
 

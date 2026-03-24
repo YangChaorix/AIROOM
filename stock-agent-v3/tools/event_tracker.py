@@ -79,13 +79,14 @@ def save_event_history(history: dict) -> None:
         logger.error(f"保存事件历史到 DB 失败: {e}")
 
 
-def check_event_freshness(event_summary: str, event_type: str) -> dict:
+def check_event_freshness(event_summary: str, event_type: str, source: str = None) -> dict:
     """
-    检查事件新鲜度
+    检查事件新鲜度，并通过 db.upsert_event() 正确累计 seen_count。
 
     Args:
         event_summary: 事件摘要文本
         event_type: 事件类型（政策/涨价/转折事件）
+        source: 来源标识（可选）
 
     Returns:
         {
@@ -96,19 +97,16 @@ def check_event_freshness(event_summary: str, event_type: str) -> dict:
             reason: str               # 判断理由
         }
     """
+    from tools.db import db
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     event_hash = _make_event_hash(event_summary, event_type)
-    history = load_event_history()
 
-    if event_hash not in history:
-        # 首次出现：记录并返回高新鲜度
-        history[event_hash] = {
-            "first_seen": now_str,
-            "summary": event_summary[:100],
-            "type": event_type,
-            "last_seen": now_str,
-        }
-        save_event_history(history)
+    existing = db.get_event(event_hash)
+
+    if existing is None:
+        # 首次出现
+        db.upsert_event(event_hash, event_summary[:100], event_type,
+                        first_seen=now_str, last_seen=now_str, source=source)
         return {
             "is_fresh": True,
             "days_since_first": 0,
@@ -117,8 +115,7 @@ def check_event_freshness(event_summary: str, event_type: str) -> dict:
             "reason": "今日首次出现，为新增信息",
         }
 
-    record = history[event_hash]
-    first_seen_str = record.get("first_seen", now_str)
+    first_seen_str = existing.get("first_seen", now_str)
     try:
         first_seen_date = date.fromisoformat(first_seen_str[:10])
     except ValueError:
@@ -126,9 +123,9 @@ def check_event_freshness(event_summary: str, event_type: str) -> dict:
 
     days_elapsed = (date.today() - first_seen_date).days
 
-    # 更新 last_seen
-    record["last_seen"] = now_str
-    save_event_history(history)
+    # 更新 last_seen 并累计 seen_count
+    db.upsert_event(event_hash, event_summary[:100], event_type,
+                    first_seen=first_seen_str, last_seen=now_str, source=source)
 
     if days_elapsed > STALE_DAYS:
         return {
@@ -148,29 +145,24 @@ def check_event_freshness(event_summary: str, event_type: str) -> dict:
         }
 
 
-def mark_event_seen(event_summary: str, event_type: str) -> None:
+def mark_event_seen(event_summary: str, event_type: str, source: str = None) -> None:
     """
-    标记事件为已见（如果历史中不存在则新增）
+    标记事件为已见（如果历史中不存在则新增，否则累计 seen_count）
 
     Args:
         event_summary: 事件摘要文本
         event_type: 事件类型
+        source: 来源标识（可选）
     """
+    from tools.db import db
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     event_hash = _make_event_hash(event_summary, event_type)
-    history = load_event_history()
 
-    if event_hash not in history:
-        history[event_hash] = {
-            "first_seen": now_str,
-            "summary": event_summary[:100],
-            "type": event_type,
-            "last_seen": now_str,
-        }
-    else:
-        history[event_hash]["last_seen"] = now_str
+    existing = db.get_event(event_hash)
+    first_seen = existing["first_seen"] if existing else now_str
 
-    save_event_history(history)
+    db.upsert_event(event_hash, event_summary[:100], event_type,
+                    first_seen=first_seen, last_seen=now_str, source=source)
     logger.debug(f"事件已标记: hash={event_hash}, type={event_type}, summary={event_summary[:50]}")
 
 

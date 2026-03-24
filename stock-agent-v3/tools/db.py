@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS run_logs (
     started_at  TEXT NOT NULL,
     finished_at TEXT,
     status      TEXT DEFAULT 'running',
-    error_msg   TEXT
+    error_msg   TEXT,
+    models      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS triggers (
@@ -119,7 +120,8 @@ CREATE TABLE IF NOT EXISTS event_history (
     last_seen   TEXT NOT NULL,
     seen_count  INTEGER NOT NULL DEFAULT 1,
     summary     TEXT,
-    event_type  TEXT
+    event_type  TEXT,
+    source      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS system_config (
@@ -130,14 +132,31 @@ CREATE TABLE IF NOT EXISTS system_config (
     note       TEXT,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS stock_analysis (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    codes          TEXT NOT NULL,
+    names          TEXT,
+    scores_summary TEXT,
+    results        TEXT NOT NULL,
+    model          TEXT,
+    analyzed_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stock_analysis_at ON stock_analysis(analyzed_at DESC);
 """
 
 _DEFAULT_CONFIGS = [
-    ("dashboard_picks_limit", "10",  "number", "控制台精选显示条数", "控制台「今日精选」最多显示几条"),
-    ("screener_top_n",        "20",  "number", "精选股票总数",       "每次分析筛选并保存的 Top N 精选数量"),
-    ("news_collect_days",     "1",   "number", "新闻保留天数",       "新闻缓存管理器读取最近 N 天的新闻参与分析"),
-    ("stale_event_days",      "14",  "number", "事件陈旧阈值(天)",   "超过此天数的事件被标记为低新鲜度"),
-    ("cleanup_event_days",    "30",  "number", "事件清理周期(天)",   "超过此天数未再出现的事件自动清理"),
+    ("dashboard_picks_limit",        "10", "number", "控制台精选显示条数",      "控制台「今日精选」最多显示几条"),
+    ("screener_news_sources",        "",   "text",   "初筛新闻渠道",            "空=所有渠道；多渠道逗号分隔，如：财联社,东方财富,国家发改委"),
+    ("screener_news_lookback_hours", "0",  "number", "初筛新闻回溯小时数",      "0=仅当天（0点起）；24=过去24小时（含昨天）；48=过去48小时"),
+    ("analyst_news_sources",         "",   "text",   "个股分析新闻渠道",        "空=所有渠道；多渠道逗号分隔，如：财联社,东方财富"),
+    ("analyst_news_lookback_hours",  "72", "number", "个股分析新闻回溯小时数",  "默认72小时（近3天）；24=近1天；168=近7天"),
+    ("schedule_trigger_hour",        "9",  "number", "触发分析执行小时",        "每天触发+精筛的小时（0-23，北京时间）"),
+    ("schedule_trigger_minute",      "15", "number", "触发分析执行分钟",        "每天触发+精筛的分钟（0-59）"),
+    ("schedule_trigger_days",        "1,2,3,4,5", "text", "触发分析执行日",   "周几执行，逗号分隔：1=周一…7=周日；空=每天"),
+    ("schedule_review_hour",         "15", "number", "复盘执行小时",           "每天复盘的小时（0-23，北京时间）"),
+    ("schedule_review_minute",       "35", "number", "复盘执行分钟",           "每天复盘的分钟（0-59）"),
+    ("schedule_review_days",         "1,2,3,4,5", "text", "复盘执行日",        "周几执行，逗号分隔：1=周一…7=周日；空=每天"),
 ]
 
 
@@ -149,12 +168,11 @@ class StockAgentDB:
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             db_path = os.path.join(project_root, self.DEFAULT_DB_PATH)
         self.db_path = db_path
-        # 首次使用时自动建表
-        if not os.path.exists(self.db_path):
-            try:
-                self.init_db()
-            except Exception as e:
-                logger.warning(f"DB 自动初始化失败（不影响主流程）: {e}")
+        # 每次启动都执行（幂等），确保迁移列存在
+        try:
+            self.init_db()
+        except Exception as e:
+            logger.warning(f"DB 初始化失败（不影响主流程）: {e}")
 
     def init_db(self) -> None:
         """建表（幂等，已存在不影响）"""
@@ -163,6 +181,11 @@ class StockAgentDB:
         try:
             conn.executescript(_DDL)
             conn.commit()
+            # 迁移：run_logs 加 models 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(run_logs)").fetchall()]
+            if "models" not in cols:
+                conn.execute("ALTER TABLE run_logs ADD COLUMN models TEXT")
+                conn.commit()
             # 迁移：screener_stocks 加 run_id 列
             cols = [r[1] for r in conn.execute("PRAGMA table_info(screener_stocks)").fetchall()]
             if "run_id" not in cols:
@@ -173,6 +196,52 @@ class StockAgentDB:
             if "seen_count" not in cols:
                 conn.execute("ALTER TABLE event_history ADD COLUMN seen_count INTEGER NOT NULL DEFAULT 1")
                 conn.commit()
+            # 迁移：event_history 加 source 列
+            if "source" not in cols:
+                conn.execute("ALTER TABLE event_history ADD COLUMN source TEXT")
+                conn.commit()
+            # 迁移：stock_analysis 加 names / scores_summary 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(stock_analysis)").fetchall()]
+            if "names" not in cols:
+                conn.execute("ALTER TABLE stock_analysis ADD COLUMN names TEXT")
+                conn.commit()
+            if "scores_summary" not in cols:
+                conn.execute("ALTER TABLE stock_analysis ADD COLUMN scores_summary TEXT")
+                conn.commit()
+            # 迁移：回填 names / scores_summary 为 NULL 的旧记录
+            old_rows = conn.execute(
+                "SELECT id, results FROM stock_analysis WHERE names IS NULL OR scores_summary IS NULL"
+            ).fetchall()
+            for old_row in old_rows:
+                try:
+                    res = json.loads(old_row[1])
+                    stock_results = res.get("results", [])
+                    names = []
+                    scores_summary = []
+                    for r in stock_results:
+                        basic = (r.get("raw_data") or {}).get("basic") or {}
+                        name = (basic.get("股票名称") or basic.get("股票简称")
+                                or r.get("name") or r.get("code", ""))
+                        ts = r.get("total_score")
+                        if ts is None:
+                            sc = r.get("scores") or {}
+                            if sc:
+                                ts = sum(v.get("score", 0) for v in sc.values() if isinstance(v, dict))
+                        names.append(name)
+                        scores_summary.append({
+                            "code": r.get("code", ""),
+                            "name": name,
+                            "total_score": ts,
+                        })
+                    conn.execute(
+                        "UPDATE stock_analysis SET names=?, scores_summary=? WHERE id=?",
+                        (json.dumps(names, ensure_ascii=False),
+                         json.dumps(scores_summary, ensure_ascii=False),
+                         old_row[0]),
+                    )
+                except Exception:
+                    pass
+            conn.commit()
             # 初始化默认系统配置（已存在的 key 跳过）
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             for key, value, typ, label, note in _DEFAULT_CONFIGS:
@@ -202,14 +271,15 @@ class StockAgentDB:
 
     # ── run_logs ──────────────────────────────────────────────────────────────
 
-    def start_run(self, run_mode: str) -> int:
-        """记录运行开始，返回 run_id"""
+    def start_run(self, run_mode: str, models: dict = None) -> int:
+        """记录运行开始，返回 run_id。models 格式：{agent: 'provider/model-id'}"""
         today = datetime.now().strftime("%Y-%m-%d")
         started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        models_json = json.dumps(models, ensure_ascii=False) if models else None
         with self.get_conn() as conn:
             cur = conn.execute(
-                "INSERT INTO run_logs (run_date, run_mode, started_at, status) VALUES (?, ?, ?, 'running')",
-                (today, run_mode, started_at),
+                "INSERT INTO run_logs (run_date, run_mode, started_at, status, models) VALUES (?, ?, ?, 'running', ?)",
+                (today, run_mode, started_at, models_json),
             )
             return cur.lastrowid
 
@@ -438,6 +508,65 @@ class StockAgentDB:
                 ).fetchall()
         return [dict(row) for row in rows]
 
+    def get_news_filtered(self, sources: list = None, since_dt: str = None) -> list:
+        """
+        按来源和时间过滤新闻（可跨日）。
+        sources: None 或 [] = 所有来源；否则只返回指定来源
+        since_dt: None = 今天0点起；YYYY-MM-DD HH:MM:SS 格式的起始时间
+        """
+        if since_dt is None:
+            since_dt = datetime.now().strftime("%Y-%m-%d") + " 00:00:00"
+        params: list = [since_dt]
+        where = "WHERE collected_at >= ?"
+        if sources:
+            placeholders = ",".join("?" * len(sources))
+            where += f" AND source IN ({placeholders})"
+            params.extend(sources)
+        with self.get_conn() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM news_items {where} ORDER BY collected_at",
+                params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def search_news(self, keywords: list, days: int = 3, limit: int = 15,
+                    sources: list = None, since_dt: str = None) -> list:
+        """
+        搜索标题或内容包含任一关键词的新闻，按发布时间倒序。
+        sources: None/[] = 所有渠道；否则只搜指定渠道
+        since_dt: YYYY-MM-DD HH:MM:SS 起始时间；None 则用 days 参数计算
+        """
+        if not keywords:
+            return []
+        keyword_cond = " OR ".join(["(title LIKE ? OR content LIKE ?)"] * len(keywords))
+        params = []
+        for kw in keywords:
+            params.extend([f"%{kw}%", f"%{kw}%"])
+
+        if since_dt:
+            time_cond = "collected_at >= ?"
+            params.append(since_dt)
+        else:
+            time_cond = f"collect_date >= date('now', '-{int(days)} days')"
+
+        source_cond = ""
+        if sources:
+            placeholders = ",".join("?" * len(sources))
+            source_cond = f"AND source IN ({placeholders})"
+            params.append(*sources) if len(sources) == 1 else params.extend(sources)
+
+        with self.get_conn() as conn:
+            rows = conn.execute(
+                f"""SELECT title, source, pub_time, content FROM news_items
+                    WHERE {time_cond}
+                    AND ({keyword_cond})
+                    {source_cond}
+                    ORDER BY COALESCE(pub_time, collected_at) DESC
+                    LIMIT ?""",
+                params + [limit],
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_source_last_collected(self, collect_date: str) -> dict:
         """返回 {source: last_collected_time} 字典"""
         with self.get_conn() as conn:
@@ -460,20 +589,65 @@ class StockAgentDB:
     # ── prompts ───────────────────────────────────────────────────────────────
 
     def save_prompt(self, agent_name: str, prompt_name: str, content: str,
-                    version: str, note: str = "") -> None:
-        """保存新版本 Prompt（旧版本 is_active 设为 0）"""
+                    version: str = None, note: str = "") -> int:
+        """保存新版本 Prompt（旧版本 is_active 设为 0），返回新行 id"""
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self.get_conn() as conn:
+            # 自动生成版本号
+            if version is None:
+                rows = conn.execute(
+                    "SELECT version FROM prompts WHERE agent_name=? AND prompt_name=?",
+                    (agent_name, prompt_name),
+                ).fetchall()
+                max_n = 0
+                for row in rows:
+                    v = row["version"] or ""
+                    if v.startswith("v"):
+                        try:
+                            max_n = max(max_n, int(v[1:].split(".")[0]))
+                        except ValueError:
+                            pass
+                version = f"v{max_n + 1}"
+
+            # 旧版本全部归档
             conn.execute(
                 "UPDATE prompts SET is_active=0 WHERE agent_name=? AND prompt_name=?",
                 (agent_name, prompt_name),
             )
-            conn.execute(
+            # 插入新版本
+            cur = conn.execute(
                 """INSERT INTO prompts
                    (agent_name, prompt_name, content, version, is_active, created_at, note)
                    VALUES (?, ?, ?, ?, 1, ?, ?)""",
                 (agent_name, prompt_name, content, version, created_at, note),
             )
+            new_id = cur.lastrowid
+
+            # 100 条上限：删除最旧的超出部分
+            conn.execute(
+                """DELETE FROM prompts WHERE agent_name=? AND prompt_name=?
+                   AND id NOT IN (
+                     SELECT id FROM prompts WHERE agent_name=? AND prompt_name=?
+                     ORDER BY id DESC LIMIT 100
+                   )""",
+                (agent_name, prompt_name, agent_name, prompt_name),
+            )
+            return new_id
+
+    def activate_prompt(self, prompt_id: int) -> bool:
+        """将指定 id 的 Prompt 设为激活，同 agent/name 其余版本归档"""
+        with self.get_conn() as conn:
+            row = conn.execute(
+                "SELECT agent_name, prompt_name FROM prompts WHERE id=?", (prompt_id,)
+            ).fetchone()
+            if not row:
+                return False
+            conn.execute(
+                "UPDATE prompts SET is_active=0 WHERE agent_name=? AND prompt_name=?",
+                (row["agent_name"], row["prompt_name"]),
+            )
+            conn.execute("UPDATE prompts SET is_active=1 WHERE id=?", (prompt_id,))
+            return True
 
     def get_active_prompt(self, agent_name: str, prompt_name: str) -> Optional[str]:
         """读取当前激活的 Prompt 内容，不存在返回 None"""
@@ -496,6 +670,16 @@ class StockAgentDB:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def news_seen_before(self, news_hash: str, today: str) -> Optional[str]:
+        """若该 news_hash 在 today 之前的日期已存在，返回最早日期；否则返回 None"""
+        with self.get_conn() as conn:
+            row = conn.execute(
+                "SELECT MIN(collect_date) as first_date FROM news_items WHERE news_hash=? AND collect_date<?",
+                (news_hash, today),
+            ).fetchone()
+        first = row["first_date"] if row else None
+        return first if first else None
+
     # ── event_history ─────────────────────────────────────────────────────────
 
     def get_event(self, event_hash: str) -> Optional[dict]:
@@ -507,16 +691,17 @@ class StockAgentDB:
         return dict(row) if row else None
 
     def upsert_event(self, event_hash: str, summary: str, event_type: str,
-                     first_seen: str, last_seen: str) -> None:
+                     first_seen: str, last_seen: str, source: str = None) -> None:
         """插入或更新事件记录（冲突时更新 last_seen 并累计 seen_count）"""
         with self.get_conn() as conn:
             conn.execute(
-                """INSERT INTO event_history (event_hash, first_seen, last_seen, seen_count, summary, event_type)
-                   VALUES (?, ?, ?, 1, ?, ?)
+                """INSERT INTO event_history (event_hash, first_seen, last_seen, seen_count, summary, event_type, source)
+                   VALUES (?, ?, ?, 1, ?, ?, ?)
                    ON CONFLICT(event_hash) DO UPDATE SET
                        last_seen=excluded.last_seen,
-                       seen_count=seen_count+1""",
-                (event_hash, first_seen, last_seen, summary, event_type),
+                       seen_count=seen_count+1,
+                       source=COALESCE(excluded.source, source)""",
+                (event_hash, first_seen, last_seen, summary, event_type, source),
             )
 
     def delete_old_events(self, before_date: str) -> int:
@@ -555,6 +740,58 @@ class StockAgentDB:
                 (value, updated_at, key),
             )
         return cur.rowcount > 0
+
+    # ── stock_analysis ────────────────────────────────────────────────────────
+
+    def save_analysis(self, codes: list, results: dict, model: str = None) -> int:
+        analyzed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 提取轻量摘要：名称列表 + 每只股票总分
+        stock_results = results.get("results", [])
+        names = [r.get("name") or r.get("code", "") for r in stock_results]
+        scores_summary = []
+        for r in stock_results:
+            ts = r.get("total_score")
+            if ts is None:
+                sc = r.get("scores") or {}
+                if sc:
+                    ts = sum(v.get("score", 0) for v in sc.values() if isinstance(v, dict))
+            scores_summary.append({
+                "code": r.get("code", ""),
+                "name": r.get("name", ""),
+                "total_score": ts,
+            })
+        with self.get_conn() as conn:
+            cur = conn.execute(
+                "INSERT INTO stock_analysis (codes, names, scores_summary, results, model, analyzed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    json.dumps(codes, ensure_ascii=False),
+                    json.dumps(names, ensure_ascii=False),
+                    json.dumps(scores_summary, ensure_ascii=False),
+                    json.dumps(results, ensure_ascii=False),
+                    model,
+                    analyzed_at,
+                ),
+            )
+            return cur.lastrowid
+
+    def list_analyses(self, date: str = None, limit: int = 20, offset: int = 0) -> dict:
+        """返回历史分析列表（不含 results 大字段），支持日期筛选和分页"""
+        where = "WHERE DATE(analyzed_at)=?" if date else ""
+        params = [date] if date else []
+        with self.get_conn() as conn:
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM stock_analysis {where}", params
+            ).fetchone()[0]
+            rows = conn.execute(
+                f"SELECT id, codes, names, scores_summary, model, analyzed_at FROM stock_analysis {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+                params + [limit, offset],
+            ).fetchall()
+        return {"items": [dict(r) for r in rows], "total": total}
+
+    def get_analysis(self, analysis_id: int) -> Optional[dict]:
+        with self.get_conn() as conn:
+            row = conn.execute("SELECT * FROM stock_analysis WHERE id=?", (analysis_id,)).fetchone()
+        return dict(row) if row else None
 
 
 db = StockAgentDB()  # 全局单例

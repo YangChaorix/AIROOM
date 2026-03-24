@@ -12,7 +12,7 @@ from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from config.settings import settings
+from config.settings import settings, build_llm as _build_llm
 from tools.stock_data import get_stock_basic_info, get_financial_indicators, get_historical_volume
 from tools.shareholder_tools import get_top_shareholders, get_shareholder_changes
 from tools.technical_tools import calc_volume_breakthrough, calc_long_term_trend
@@ -107,14 +107,8 @@ SCREENER_SYSTEM_PROMPT = """你是一个A股企业基本面分析师。你会收
 }"""
 
 
-def build_llm() -> ChatOpenAI:
-    return ChatOpenAI(
-        api_key=settings.deepseek.api_key,
-        base_url=settings.deepseek.base_url,
-        model=settings.deepseek.model_name,
-        temperature=settings.deepseek.temperature,
-        max_tokens=settings.deepseek.max_tokens,
-    )
+def build_llm():
+    return _build_llm("screener")
 
 
 def _collect_company_data(company_name: str, stock_code: str) -> dict:
@@ -327,6 +321,13 @@ def run_screener_agent(trigger_result: dict) -> dict:
     trigger_summary = json.dumps(trigger_result, ensure_ascii=False, indent=2)
     company_data_text = json.dumps(company_data_list, ensure_ascii=False, indent=2)
     logger.debug("【精筛输入 - 所有企业量化数据】\n" + company_data_text)
+    try:
+        from tools.db import db as _db
+        _content = _db.get_active_prompt("screener", "system_prompt")
+    except Exception:
+        _content = None
+    _screener_prompt = _content if _content else SCREENER_SYSTEM_PROMPT
+
     llm = build_llm()
 
     def _call_batch(rank_range: str, batch_label: str) -> list[dict]:
@@ -347,7 +348,7 @@ def run_screener_agent(trigger_result: dict) -> dict:
 
         logger.debug(f"【LLM 输入 - {batch_label} Human Message】\n" + human_content)
         messages = [
-            SystemMessage(content=SCREENER_SYSTEM_PROMPT),
+            SystemMessage(content=_screener_prompt),
             HumanMessage(content=human_content),
         ]
         resp = llm.invoke(messages)
@@ -363,21 +364,40 @@ def run_screener_agent(trigger_result: dict) -> dict:
             )
         return items
 
-    logger.info("调用LLM精筛评分（第1批：Top 1~10）...")
-    batch1 = _call_batch("第1名到第10名（Top 1~10）", "第1批")
-    logger.info(f"第1批完成，得到 {len(batch1)} 条")
+    # 从提示词中解析 Top N，默认 20
+    import re as _re
+    _top_match = _re.search(r'[Tt]op\s*(\d+)', _screener_prompt)
+    top_n = int(_top_match.group(1)) if _top_match else 20
+    batch_size = 10
+    batches_needed = (top_n + batch_size - 1) // batch_size
+    logger.info(f"提示词解析 Top N={top_n}，将分 {batches_needed} 批调用LLM")
 
-    logger.info("调用LLM精筛评分（第2批：Top 11~20）...")
-    batch2 = _call_batch(
-        "第11名到第20名（Top 11~20），即综合得分排第11到第20的企业", "第2批"
-    )
-    logger.info(f"第2批完成，得到 {len(batch2)} 条")
+    all_raw_batches = []
+    for i in range(batches_needed):
+        start = i * batch_size + 1
+        end = min((i + 1) * batch_size, top_n)
+        batch_label = f"第{i+1}批"
+        rank_range = f"第{start}名到第{end}名（Top {start}~{end}）"
+        logger.info(f"调用LLM精筛评分（{batch_label}：Top {start}~{end}）...")
+        batch = _call_batch(rank_range, batch_label)
+        logger.info(f"{batch_label}完成，得到 {len(batch)} 条")
+        all_raw_batches.append(batch)
 
-    all_items = batch1 + batch2
+    # 按 stock_code 去重，保留先出现（排名更靠前）的条目
+    seen_codes = set()
+    deduped = []
+    for batch in all_raw_batches:
+        for item in batch:
+            code = item.get("code", "")
+            if code and code not in seen_codes:
+                seen_codes.add(code)
+                deduped.append(item)
+    all_items = deduped
+    batch_summary = "+".join(str(len(b)) for b in all_raw_batches)
     result = {
         "date": today,
         "top20": all_items,
-        "analysis_summary": f"共输出 {len(all_items)} 家企业（第1批{len(batch1)}+第2批{len(batch2)}）",
+        "analysis_summary": f"共输出 {len(all_items)} 家企业（{batch_summary}，去重后{len(all_items)}）",
     }
 
     result["date"] = today

@@ -172,8 +172,11 @@ def run_workflow(run_mode: str = "full") -> WorkflowState:
     run_id = None
     try:
         from tools.db import db
-        run_id = db.start_run(run_mode)
-        logger.debug(f"DB run_logs 记录开始：run_id={run_id}, mode={run_mode}")
+        from config.settings import _load_models_json
+        _mcfg = _load_models_json()
+        _models = {a: v["model"] for a, v in _mcfg.get("agents", {}).items()}
+        run_id = db.start_run(run_mode, models=_models)
+        logger.debug(f"DB run_logs 记录开始：run_id={run_id}, mode={run_mode}, models={_models}")
     except Exception as e:
         logger.warning(f"DB start_run 失败（不影响主流程）: {e}")
 

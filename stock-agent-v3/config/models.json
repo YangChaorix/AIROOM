@@ -1,0 +1,31 @@
+{
+  "providers": {
+    "deepseek": {
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": "DEEPSEEK_API_KEY"
+    },
+    "anthropic": {
+      "base_url": "https://api.anthropic.com/v1",
+      "api_key_env": "ANTHROPIC_API_KEY"
+    },
+    "google": {
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "api_key_env": "GOOGLE_API_KEY"
+    }
+  },
+  "defaults": {
+    "temperature": 0.1,
+    "max_tokens": 16000
+  },
+  "agents": {
+    "trigger": {
+      "model": "deepseek/deepseek-chat"
+    },
+    "screener": {
+      "model": "deepseek/deepseek-chat"
+    },
+    "review": {
+      "model": "deepseek/deepseek-chat"
+    }
+  }
+}

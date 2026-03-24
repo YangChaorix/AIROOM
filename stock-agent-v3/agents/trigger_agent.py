@@ -15,7 +15,7 @@ from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from config.settings import settings
+from config.settings import settings, build_llm as _build_llm
 from tools.news_tools import get_all_trigger_news
 from tools.news_collector import NewsCacheManager, collect_all_due_sources
 from tools.price_monitor import scan_all_industry_prices, COMMODITY_FUTURES_MAP, get_commodity_price_change
@@ -95,14 +95,8 @@ TRIGGER_SYSTEM_PROMPT = """你是一个专注A股市场的信息扫描分析师�
 }"""
 
 
-def build_llm() -> ChatOpenAI:
-    return ChatOpenAI(
-        api_key=settings.deepseek.api_key,
-        base_url=settings.deepseek.base_url,
-        model=settings.deepseek.model_name,
-        temperature=settings.deepseek.temperature,
-        max_tokens=settings.deepseek.max_tokens,
-    )
+def build_llm():
+    return _build_llm("trigger")
 
 
 def run_trigger_agent() -> dict:
@@ -120,6 +114,17 @@ def run_trigger_agent() -> dict:
 
     # Step 1: 读取新闻缓存，不足时实时采集
     logger.info("读取当日新闻缓存...")
+
+    # 读取初筛新闻配置
+    from tools.db import db as _db
+    _sources_raw = _db.get_config('screener_news_sources', '') or ''
+    _lookback_hours = int(_db.get_config('screener_news_lookback_hours', 0) or 0)
+    _filter_sources = [s.strip() for s in _sources_raw.split(',') if s.strip()]
+    logger.info(
+        f"初筛新闻配置：渠道={'全部' if not _filter_sources else str(_filter_sources)}，"
+        f"回溯={'当天0点起' if _lookback_hours == 0 else f'过去{_lookback_hours}小时'}"
+    )
+
     try:
         mgr = NewsCacheManager()
         cache = mgr.load_today()
@@ -127,7 +132,9 @@ def run_trigger_agent() -> dict:
 
         if total_cached >= 10:
             logger.info(f"使用当日新闻缓存：{total_cached} 条")
-            news_data = mgr.get_news_for_analysis()
+            news_data = mgr.get_news_for_analysis(
+                sources=_filter_sources or None, lookback_hours=_lookback_hours
+            )
             stats = news_data.get("采集统计", {})
             logger.info(
                 f"缓存统计：总计 {stats.get('总条数', 0)} 条，"
@@ -137,7 +144,9 @@ def run_trigger_agent() -> dict:
         else:
             logger.info(f"缓存不足（{total_cached}条），执行实时采集...")
             collect_all_due_sources(mgr)
-            news_data = mgr.get_news_for_analysis()
+            news_data = mgr.get_news_for_analysis(
+                sources=_filter_sources or None, lookback_hours=_lookback_hours
+            )
             stats = news_data.get("采集统计", {})
             logger.info(
                 f"实时采集完成：总计 {stats.get('总条数', 0)} 条，"
@@ -236,12 +245,19 @@ def run_trigger_agent() -> dict:
 
     # Step 5: 调用LLM
     logger.info("调用LLM分析触发条件...")
-    logger.debug("【LLM 输入 - System Prompt】\n" + TRIGGER_SYSTEM_PROMPT)
+    try:
+        from tools.db import db as _db
+        _content = _db.get_active_prompt("trigger", "system_prompt")
+    except Exception:
+        _content = None
+    _trigger_prompt = _content if _content else TRIGGER_SYSTEM_PROMPT
+
+    logger.debug("【LLM 输入 - System Prompt】\n" + _trigger_prompt)
     logger.debug("【LLM 输入 - Human Message】\n" + human_content)
 
     llm = build_llm()
     messages = [
-        SystemMessage(content=TRIGGER_SYSTEM_PROMPT),
+        SystemMessage(content=_trigger_prompt),
         HumanMessage(content=human_content),
     ]
 
@@ -273,9 +289,13 @@ def run_trigger_agent() -> dict:
     triggers = result.get("triggers", [])
     for trigger in triggers:
         try:
+            # source 用受益行业标注，便于在去重历史中区分事件来源上下文
+            industries = trigger.get("industries", [])
+            source_label = "触发分析·" + "/".join(industries[:2]) if industries else "触发分析"
             event_tracker.mark_event_seen(
                 event_summary=trigger.get("summary", ""),
                 event_type=trigger.get("type", "未知"),
+                source=source_label,
             )
         except Exception as e:
             logger.debug(f"标记事件失败（不影响主流程）: {e}")

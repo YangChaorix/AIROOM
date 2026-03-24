@@ -1,6 +1,7 @@
 """Stock Agent Dashboard - Web Server v1.0"""
 import sqlite3
 import json
+import logging
 import os
 import threading
 import subprocess
@@ -19,10 +20,41 @@ DB_PATH = os.path.join(BASE_DIR, "data", "db", "stock_agent.db")
 WEB_DIR = os.path.join(BASE_DIR, "web")
 
 sys.path.insert(0, BASE_DIR)
+
+# ── 日志初始化（与 main.py 保持一致，支持 LOG_LEVEL / LOG_FILE_ENABLED 环境变量）──
+def _setup_logging():
+    from dotenv import load_dotenv
+    load_dotenv()
+    log_file_enabled = os.getenv("LOG_FILE_ENABLED", "true").lower() != "false"
+    console_level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+    fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.handlers.clear()
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(console_level)
+    ch.setFormatter(logging.Formatter(fmt, datefmt))
+    root.addHandler(ch)
+    if log_file_enabled:
+        log_dir = os.path.join(BASE_DIR, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, f"{datetime.now().strftime('%Y-%m-%d')}.log")
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter(fmt, datefmt))
+        root.addHandler(fh)
+    for noisy in ["httpx", "httpcore", "urllib3", "asyncio", "uvicorn.access"]:
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+_setup_logging()
+logger = logging.getLogger(__name__)
+
 from tools.db import db as agent_db  # noqa: E402
 
 # ── Manual Run State ──────────────────────────────────────────────────────────
 _run_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
+_collect_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
 
 
 @asynccontextmanager
@@ -302,9 +334,10 @@ def api_news_sources(date: Optional[str] = Query(None)):
 
 # ── Event History ─────────────────────────────────────────────────────────────
 @app.get("/api/event-history")
-def api_event_history(limit: int = Query(100, ge=1, le=500)):
-    rows = query_db("SELECT * FROM event_history ORDER BY last_seen DESC LIMIT ?", (limit,))
-    return {"items": rows}
+def api_event_history(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
+    rows = query_db("SELECT * FROM event_history ORDER BY last_seen DESC LIMIT ? OFFSET ?", (limit, offset))
+    total = query_db("SELECT COUNT(*) as cnt FROM event_history", fetchall=False)
+    return {"items": rows, "total": total["cnt"] if total else 0}
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -326,6 +359,28 @@ def api_prompt_detail(prompt_id: int):
     return row
 
 
+@app.post("/api/prompts")
+def api_create_prompt(payload: dict = Body(...)):
+    agent_name  = (payload.get("agent_name") or "").strip()
+    prompt_name = (payload.get("prompt_name") or "").strip()
+    content     = (payload.get("content") or "").strip()
+    note        = (payload.get("note") or "").strip()
+    if not agent_name or not prompt_name or not content:
+        raise HTTPException(400, "agent_name, prompt_name, content are required")
+    if agent_name not in ("trigger", "screener", "review"):
+        raise HTTPException(400, f"Unknown agent: {agent_name}")
+    new_id = agent_db.save_prompt(agent_name, prompt_name, content, note=note)
+    return query_db("SELECT * FROM prompts WHERE id=?", (new_id,), fetchall=False)
+
+
+@app.post("/api/prompts/{prompt_id}/activate")
+def api_activate_prompt(prompt_id: int):
+    ok = agent_db.activate_prompt(prompt_id)
+    if not ok:
+        raise HTTPException(404, f"Prompt {prompt_id} not found")
+    return query_db("SELECT * FROM prompts WHERE id=?", (prompt_id,), fetchall=False)
+
+
 # ── System Config ─────────────────────────────────────────────────────────────
 @app.get("/api/config")
 def api_get_configs():
@@ -341,6 +396,41 @@ def api_set_config(key: str, payload: dict = Body(...)):
     if not ok:
         raise HTTPException(404, f"Config key '{key}' not found")
     return {"key": key, "value": str(value)}
+
+
+# ── Stock Analysis ────────────────────────────────────────────────────────────
+@app.post("/api/analyze-stocks")
+def api_analyze_stocks(payload: dict = Body(...)):
+    codes_raw = payload.get("codes", [])
+    if not codes_raw or len(codes_raw) > 5:
+        raise HTTPException(400, "请提供 1-5 个股票代码")
+    codes = [c.strip().zfill(6) for c in codes_raw if c.strip()]
+    if not codes:
+        raise HTTPException(400, "股票代码无效")
+    from agents.stock_analyst_agent import run_stock_analyst
+    result = run_stock_analyst(codes)
+    analysis_id = agent_db.save_analysis(codes, result, model=result.get("model"))
+    result["id"] = analysis_id
+    return result
+
+
+@app.get("/api/analyses")
+def api_list_analyses(
+    date: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    return agent_db.list_analyses(date=date, limit=limit, offset=offset)
+
+
+@app.get("/api/analyses/{analysis_id}")
+def api_get_analysis(analysis_id: int):
+    row = agent_db.get_analysis(analysis_id)
+    if not row:
+        raise HTTPException(404, "Not found")
+    row["results"] = json.loads(row["results"])
+    row["codes"] = json.loads(row["codes"])
+    return row
 
 
 # ── Manual Run ────────────────────────────────────────────────────────────────
@@ -381,6 +471,45 @@ def api_run_trigger():
 @app.get("/api/run/status")
 def api_run_status():
     return dict(_run_state)
+
+
+def _do_collect():
+    _collect_state["running"] = True
+    _collect_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+    _collect_state["finished_at"] = None
+    _collect_state["error"] = None
+    _collect_state["status"] = "running"
+    try:
+        main_py = os.path.join(BASE_DIR, "main.py")
+        result = subprocess.run(
+            [sys.executable, main_py, "--collect"],
+            capture_output=True, text=True, cwd=BASE_DIR
+        )
+        if result.returncode == 0:
+            _collect_state["status"] = "success"
+        else:
+            _collect_state["status"] = "error"
+            _collect_state["error"] = (result.stderr or result.stdout or "Unknown error")[-500:]
+    except Exception as e:
+        _collect_state["status"] = "error"
+        _collect_state["error"] = str(e)
+    finally:
+        _collect_state["running"] = False
+        _collect_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
+
+
+@app.post("/api/news/collect")
+def api_news_collect():
+    if _collect_state["running"]:
+        raise HTTPException(status_code=409, detail="News collection already running")
+    t = threading.Thread(target=_do_collect, daemon=True)
+    t.start()
+    return {"message": "News collection started", "started_at": _collect_state["started_at"]}
+
+
+@app.get("/api/news/collect/status")
+def api_news_collect_status():
+    return dict(_collect_state)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

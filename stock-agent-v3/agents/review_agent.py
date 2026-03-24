@@ -13,7 +13,7 @@ from datetime import datetime, date
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from config.settings import settings
+from config.settings import settings, build_llm as _build_llm
 from tools.market_screener import get_market_movers, get_sector_performance
 
 logger = logging.getLogger(__name__)
@@ -75,14 +75,8 @@ REVIEW_SYSTEM_PROMPT = """你是一个A股市场的每日复盘分析师。在�
 上下游轮动有规律：核心行业先涨，原材料上游随后，耗材下游最后。"""
 
 
-def build_llm() -> ChatOpenAI:
-    return ChatOpenAI(
-        api_key=settings.deepseek.api_key,
-        base_url=settings.deepseek.base_url,
-        model=settings.deepseek.model_name,
-        temperature=settings.deepseek.temperature,
-        max_tokens=settings.deepseek.max_tokens,
-    )
+def build_llm():
+    return _build_llm("review")
 
 
 def _get_market_movers_with_retry(top_n: int = 50, max_retries: int = 2, retry_delay: float = 5.0) -> dict:
@@ -230,9 +224,16 @@ def run_review_agent(daily_push=None) -> dict:
     logger.info("调用LLM生成复盘日报...")
     logger.debug("【LLM 输入 - 复盘 Human Message】\n" + human_content)
 
+    try:
+        from tools.db import db as _db
+        _content = _db.get_active_prompt("review", "system_prompt")
+    except Exception:
+        _content = None
+    _review_prompt = _content if _content else REVIEW_SYSTEM_PROMPT
+
     llm = build_llm()
     messages = [
-        SystemMessage(content=REVIEW_SYSTEM_PROMPT),
+        SystemMessage(content=_review_prompt),
         HumanMessage(content=human_content),
     ]
 

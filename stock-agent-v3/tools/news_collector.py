@@ -229,6 +229,22 @@ class NewsCacheManager:
                 continue
 
             news_id = _make_news_id(title)
+
+            # 跨日去重：若同 hash 在历史日期出现过，更新 event_history 后跳过
+            first_date = db.news_seen_before(news_id, today)
+            if first_date:
+                db.upsert_event(
+                    event_hash=news_id,
+                    summary=title[:100],
+                    event_type="重复新闻",
+                    first_seen=first_date,
+                    last_seen=now_str,
+                    source=source,
+                )
+                logger.debug(f"  [跨日重复] 跳过「{title[:30]}…」(首见:{first_date})")
+                continue
+
+            # 当日缓存去重
             if news_id in existing_ids:
                 continue
 
@@ -264,13 +280,34 @@ class NewsCacheManager:
             logger.warning(f"mark_source_collected DB 写入失败: {e}")
         cache.setdefault("source_last_collected", {})[source] = _now_str()
 
-    def get_news_for_analysis(self, hours: int = 12) -> dict:
+    def get_news_for_analysis(self, hours: int = 12,
+                              sources: list = None,
+                              lookback_hours: int = 0) -> dict:
         """
-        从 DB 读取当日新闻，格式化为 LLM 分析输入。
+        从 DB 读取新闻，格式化为 LLM 分析输入。
+        sources: None/[] = 所有渠道；否则只取指定渠道
+        lookback_hours: 0 = 今天0点起；>0 = 过去N小时（可跨昨天）
         返回含采集统计 + 按来源分组的 dict。
         """
-        cache = self.load_today()
-        news_items = cache.get("news", [])
+        from tools.db import db
+        from datetime import timedelta
+        if lookback_hours and lookback_hours > 0:
+            since_dt = (datetime.now() - timedelta(hours=lookback_hours)).strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            since_dt = None  # db.get_news_filtered 默认今天0点起
+        raw_rows = db.get_news_filtered(sources=sources or None, since_dt=since_dt)
+        news_items = [
+            {
+                "id": row["news_hash"],
+                "title": row["title"],
+                "content": row["content"],
+                "source": row["source"],
+                "pub_time": row["pub_time"],
+                "collected_at": row["collected_at"],
+                "priority": row["priority"],
+            }
+            for row in raw_rows
+        ]
 
         now = datetime.now()
         one_hour_ago = now - timedelta(hours=1)
