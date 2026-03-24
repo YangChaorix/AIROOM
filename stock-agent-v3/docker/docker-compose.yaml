@@ -13,11 +13,11 @@ services:
       - ./config/models.json:/app/config/models.json:ro  # 模型配置（只读）
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/api/config"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8888/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 
   # ── Scheduler（定时触发 + 采集） ────────────────────────────────────────────

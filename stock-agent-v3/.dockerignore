@@ -1,0 +1,19 @@
+# 不打进镜像，通过挂载卷注入
+.env
+data/
+logs/
+
+# Python 缓存
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 开发工具
+.git/
+.gitignore
+*.md
+.vscode/
+.idea/

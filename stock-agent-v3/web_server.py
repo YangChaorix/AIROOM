@@ -9,8 +9,10 @@ import sys
 from datetime import datetime
 from typing import Optional
 
+import hmac
+import hashlib
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, HTTPException, Body
+from fastapi import FastAPI, Query, HTTPException, Body, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -51,6 +53,24 @@ _setup_logging()
 logger = logging.getLogger(__name__)
 
 from tools.db import db as agent_db  # noqa: E402
+
+# ── 认证配置 ───────────────────────────────────────────────────────────────────
+_WEB_USERNAME = os.getenv("WEB_USERNAME", "admin")
+_WEB_PASSWORD = os.getenv("WEB_PASSWORD", "admin123")
+_TOKEN_SECRET  = os.getenv("WEB_TOKEN_SECRET", "stock-agent-secret-2026")
+
+def _make_token(username: str, password: str) -> str:
+    raw = f"{username}:{password}:{_TOKEN_SECRET}"
+    return hmac.new(raw.encode(), _TOKEN_SECRET.encode(), hashlib.sha256).hexdigest()
+
+_VALID_TOKEN = _make_token(_WEB_USERNAME, _WEB_PASSWORD)
+
+def _check_auth(request: Request):
+    token = request.headers.get("X-Auth-Token", "")
+    if token != _VALID_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+AUTH = Depends(_check_auth)
 
 # ── Manual Run State ──────────────────────────────────────────────────────────
 _run_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
@@ -97,6 +117,22 @@ def query_db(sql: str, params=(), fetchall=True):
             return parse_json_fields(dict(row)) if row else None
 
 
+# ── Health ────────────────────────────────────────────────────────────────────
+@app.get("/api/health")
+def api_health():
+    return {"status": "ok"}
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+@app.post("/api/login")
+def api_login(body: dict = Body(...)):
+    username = body.get("username", "").strip()
+    password = body.get("password", "").strip()
+    if username == _WEB_USERNAME and password == _WEB_PASSWORD:
+        return {"token": _VALID_TOKEN}
+    raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+
 # ── Static ────────────────────────────────────────────────────────────────────
 @app.get("/")
 def serve_index():
@@ -107,7 +143,7 @@ def serve_index():
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
-@app.get("/api/summary")
+@app.get("/api/summary", dependencies=[AUTH])
 def api_summary():
     if not os.path.exists(DB_PATH):
         return {"error": "Database not found"}
@@ -193,7 +229,7 @@ def api_summary():
 
 
 # ── Dates ─────────────────────────────────────────────────────────────────────
-@app.get("/api/dates")
+@app.get("/api/dates", dependencies=[AUTH])
 def api_dates():
     rows = query_db("""
         SELECT DISTINCT d FROM (
@@ -208,7 +244,7 @@ def api_dates():
 
 
 # ── Run Logs ──────────────────────────────────────────────────────────────────
-@app.get("/api/run-logs")
+@app.get("/api/run-logs", dependencies=[AUTH])
 def api_run_logs(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
     rows = query_db("SELECT * FROM run_logs ORDER BY started_at DESC LIMIT ? OFFSET ?", (limit, offset))
     total = query_db("SELECT COUNT(*) as cnt FROM run_logs", fetchall=False)
@@ -216,7 +252,7 @@ def api_run_logs(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge
 
 
 # ── Triggers ──────────────────────────────────────────────────────────────────
-@app.get("/api/triggers")
+@app.get("/api/triggers", dependencies=[AUTH])
 def api_triggers(date: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=500)):
     if date:
         rows = query_db("SELECT * FROM triggers WHERE run_date=? ORDER BY trigger_index", (date,))
@@ -226,7 +262,7 @@ def api_triggers(date: Optional[str] = Query(None), limit: int = Query(100, ge=1
 
 
 # ── Screener Stocks ───────────────────────────────────────────────────────────
-@app.get("/api/screener-stocks/runs")
+@app.get("/api/screener-stocks/runs", dependencies=[AUTH])
 def api_screener_runs(date: Optional[str] = Query(None)):
     if not date:
         raise HTTPException(400, "date is required")
@@ -237,7 +273,7 @@ def api_screener_runs(date: Optional[str] = Query(None)):
     return {"runs": [r["run_id"] for r in rows]}
 
 
-@app.get("/api/screener-stocks")
+@app.get("/api/screener-stocks", dependencies=[AUTH])
 def api_screener_stocks(
     date: Optional[str] = Query(None),
     run_id: Optional[str] = Query(None),
@@ -268,14 +304,14 @@ def api_screener_stocks(
 
 
 # ── Review ────────────────────────────────────────────────────────────────────
-@app.get("/api/review-report")
+@app.get("/api/review-report", dependencies=[AUTH])
 def api_review_report(date: Optional[str] = Query(None)):
     if date:
         return query_db("SELECT * FROM review_reports WHERE run_date=?", (date,), fetchall=False) or {}
     return query_db("SELECT * FROM review_reports ORDER BY run_date DESC LIMIT 1", fetchall=False) or {}
 
 
-@app.get("/api/review-reports")
+@app.get("/api/review-reports", dependencies=[AUTH])
 def api_review_reports(limit: int = Query(30, ge=1, le=100)):
     rows = query_db("""
         SELECT id, run_date, market_up_count, market_down_count,
@@ -286,7 +322,7 @@ def api_review_reports(limit: int = Query(30, ge=1, le=100)):
 
 
 # ── News ──────────────────────────────────────────────────────────────────────
-@app.get("/api/news")
+@app.get("/api/news", dependencies=[AUTH])
 def api_news(
     date: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
@@ -323,7 +359,7 @@ def api_news(
     return {"items": rows, "total": total["cnt"] if total else 0}
 
 
-@app.get("/api/news/sources")
+@app.get("/api/news/sources", dependencies=[AUTH])
 def api_news_sources(date: Optional[str] = Query(None)):
     if date:
         rows = query_db("SELECT DISTINCT source FROM news_items WHERE collect_date=? ORDER BY source", (date,))
@@ -333,7 +369,7 @@ def api_news_sources(date: Optional[str] = Query(None)):
 
 
 # ── Event History ─────────────────────────────────────────────────────────────
-@app.get("/api/event-history")
+@app.get("/api/event-history", dependencies=[AUTH])
 def api_event_history(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
     rows = query_db("SELECT * FROM event_history ORDER BY last_seen DESC LIMIT ? OFFSET ?", (limit, offset))
     total = query_db("SELECT COUNT(*) as cnt FROM event_history", fetchall=False)
@@ -341,7 +377,7 @@ def api_event_history(limit: int = Query(50, ge=1, le=200), offset: int = Query(
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
-@app.get("/api/prompts")
+@app.get("/api/prompts", dependencies=[AUTH])
 def api_prompts():
     rows = query_db("""
         SELECT id, agent_name, prompt_name, version, is_active, created_at, note,
@@ -351,7 +387,7 @@ def api_prompts():
     return {"items": rows}
 
 
-@app.get("/api/prompts/{prompt_id}")
+@app.get("/api/prompts/{prompt_id}", dependencies=[AUTH])
 def api_prompt_detail(prompt_id: int):
     row = query_db("SELECT * FROM prompts WHERE id=?", (prompt_id,), fetchall=False)
     if not row:
@@ -359,7 +395,7 @@ def api_prompt_detail(prompt_id: int):
     return row
 
 
-@app.post("/api/prompts")
+@app.post("/api/prompts", dependencies=[AUTH])
 def api_create_prompt(payload: dict = Body(...)):
     agent_name  = (payload.get("agent_name") or "").strip()
     prompt_name = (payload.get("prompt_name") or "").strip()
@@ -373,7 +409,7 @@ def api_create_prompt(payload: dict = Body(...)):
     return query_db("SELECT * FROM prompts WHERE id=?", (new_id,), fetchall=False)
 
 
-@app.post("/api/prompts/{prompt_id}/activate")
+@app.post("/api/prompts/{prompt_id}/activate", dependencies=[AUTH])
 def api_activate_prompt(prompt_id: int):
     ok = agent_db.activate_prompt(prompt_id)
     if not ok:
@@ -382,12 +418,12 @@ def api_activate_prompt(prompt_id: int):
 
 
 # ── System Config ─────────────────────────────────────────────────────────────
-@app.get("/api/config")
+@app.get("/api/config", dependencies=[AUTH])
 def api_get_configs():
     return {"items": agent_db.get_all_configs()}
 
 
-@app.put("/api/config/{key}")
+@app.put("/api/config/{key}", dependencies=[AUTH])
 def api_set_config(key: str, payload: dict = Body(...)):
     value = payload.get("value")
     if value is None:
@@ -399,7 +435,7 @@ def api_set_config(key: str, payload: dict = Body(...)):
 
 
 # ── Stock Analysis ────────────────────────────────────────────────────────────
-@app.post("/api/analyze-stocks")
+@app.post("/api/analyze-stocks", dependencies=[AUTH])
 def api_analyze_stocks(payload: dict = Body(...)):
     codes_raw = payload.get("codes", [])
     if not codes_raw or len(codes_raw) > 5:
@@ -414,7 +450,7 @@ def api_analyze_stocks(payload: dict = Body(...)):
     return result
 
 
-@app.get("/api/analyses")
+@app.get("/api/analyses", dependencies=[AUTH])
 def api_list_analyses(
     date: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
@@ -423,7 +459,7 @@ def api_list_analyses(
     return agent_db.list_analyses(date=date, limit=limit, offset=offset)
 
 
-@app.get("/api/analyses/{analysis_id}")
+@app.get("/api/analyses/{analysis_id}", dependencies=[AUTH])
 def api_get_analysis(analysis_id: int):
     row = agent_db.get_analysis(analysis_id)
     if not row:
@@ -459,7 +495,7 @@ def _do_run():
         _run_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
 
 
-@app.post("/api/run/trigger")
+@app.post("/api/run/trigger", dependencies=[AUTH])
 def api_run_trigger():
     if _run_state["running"]:
         raise HTTPException(status_code=409, detail="Analysis already running")
@@ -468,7 +504,7 @@ def api_run_trigger():
     return {"message": "Analysis started", "started_at": _run_state["started_at"]}
 
 
-@app.get("/api/run/status")
+@app.get("/api/run/status", dependencies=[AUTH])
 def api_run_status():
     return dict(_run_state)
 
@@ -498,7 +534,7 @@ def _do_collect():
         _collect_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
 
 
-@app.post("/api/news/collect")
+@app.post("/api/news/collect", dependencies=[AUTH])
 def api_news_collect():
     if _collect_state["running"]:
         raise HTTPException(status_code=409, detail="News collection already running")
@@ -507,7 +543,7 @@ def api_news_collect():
     return {"message": "News collection started", "started_at": _collect_state["started_at"]}
 
 
-@app.get("/api/news/collect/status")
+@app.get("/api/news/collect/status", dependencies=[AUTH])
 def api_news_collect_status():
     return dict(_collect_state)
 

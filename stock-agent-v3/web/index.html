@@ -9,16 +9,18 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f0f4f8;--bg2:#ffffff;--bg3:#f0f4f8;--border:#e2e8f0;
-  --text:#1e293b;--text2:#64748b;--text3:#94a3b8;
-  --green:#059669;--green2:#10b981;--red:#dc2626;--red2:#fca5a5;
-  --yellow:#d97706;--blue:#2563eb;--purple:#7c3aed;--cyan:#0891b2;
+  --bg:#f5f5f5;--bg2:#ffffff;--bg3:#f5f5f5;--border:#e8e8e8;
+  --text:#1a1a1a;--text2:#595959;--text3:#8c8c8c;
+  --primary:#1565c0;--primary2:#1976d2;
+  --green:#059669;--green2:#10b981;--red:#e03131;--red2:#fca5a5;
+  --yellow:#d97706;--blue:#1565c0;--purple:#7c3aed;--cyan:#0891b2;
   --sidebar:240px;
 }
 body.dark{
   --bg:#0b1120;--bg2:#111827;--bg3:#1a2335;--border:#1e293b;
   --text:#e2e8f0;--text2:#94a3b8;--text3:#475569;
-  --green:#10b981;--green2:#34d399;--red:#ef4444;--red2:#fca5a5;
+  --primary:#1976d2;--primary2:#42a5f5;
+  --green:#10b981;--green2:#34d399;--red:#ef5350;--red2:#fca5a5;
   --yellow:#f59e0b;--blue:#3b82f6;--purple:#8b5cf6;--cyan:#06b6d4;
 }
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;display:flex;min-height:100vh;overflow:hidden}
@@ -29,14 +31,14 @@ a{color:inherit;text-decoration:none}
 /* ── Sidebar ── */
 #sidebar{width:var(--sidebar);min-height:100vh;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:fixed;top:0;left:0;bottom:0;z-index:100}
 .sb-logo{padding:20px 16px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
-.sb-logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--green),var(--blue));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.sb-logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--primary),#ff8f00);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
 .sb-logo-text{font-size:15px;font-weight:700;color:var(--text)}
 .sb-logo-sub{font-size:11px;color:var(--text2)}
 .sb-nav{padding:12px 8px;flex:1;overflow-y:auto}
 .sb-section{font-size:10px;font-weight:600;color:var(--text3);padding:8px 8px 4px;text-transform:uppercase;letter-spacing:.08em}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;color:var(--text2);transition:.15s;margin-bottom:2px}
 .nav-item:hover{background:var(--bg3);color:var(--text)}
-.nav-item.active{background:#d1fae5;color:var(--green)}
+.nav-item.active{background:#e3f2fd;color:var(--primary)}
 .nav-item .icon{font-size:16px;width:20px;text-align:center}
 .nav-item .label{font-size:13px;font-weight:500}
 .sb-footer{padding:12px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);text-align:center}
@@ -49,13 +51,13 @@ a{color:inherit;text-decoration:none}
 .topbar-title{font-size:16px;font-weight:600;color:var(--text)}
 .topbar-controls{display:flex;align-items:center;gap:10px}
 select,input[type=date]{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none}
-select:focus,input[type=date]:focus{border-color:var(--green)}
+select:focus,input[type=date]:focus{border-color:var(--primary)}
 .btn{padding:7px 14px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:500;transition:.15s}
 .btn-sm{padding:4px 10px;font-size:12px}
-.btn-primary{background:var(--green);color:#fff}.btn-primary:hover{background:var(--green2)}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary2)}
 .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text2)}.btn-ghost:hover{background:var(--bg3);color:var(--text)}
 .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-.dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}.dot-red{background:var(--red)}.dot-yellow{background:var(--yellow)}
+.dot-green{background:var(--primary);box-shadow:0 0 6px var(--primary)}.dot-red{background:var(--red)}.dot-yellow{background:var(--yellow)}
 
 /* ── Content ── */
 #content{flex:1;overflow:hidden;display:flex;flex-direction:column}
@@ -77,7 +79,7 @@ select:focus,input[type=date]:focus{border-color:var(--green)}
 .card-title{font-size:13px;color:var(--text2);margin-bottom:12px;font-weight:500;display:flex;align-items:center;gap:6px}
 .stat-value{font-size:28px;font-weight:700;color:var(--text)}
 .stat-sub{font-size:12px;color:var(--text2);margin-top:4px}
-.stat-up{color:var(--green)}.stat-down{color:var(--red)}.stat-neutral{color:var(--text2)}
+.stat-up{color:var(--red)}.stat-down{color:var(--green)}.stat-neutral{color:var(--text2)}
 
 /* ── Badges ── */
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
@@ -103,7 +105,7 @@ tr:hover td{background:#f8fafc}
 .score-bar-track{flex:1;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden}
 .score-bar-fill{height:100%;border-radius:3px;transition:.3s}
 .score-val{font-size:11px;font-weight:600;width:16px;text-align:right;flex-shrink:0}
-.score-bar-0{background:var(--red)}.score-bar-1{background:var(--yellow)}.score-bar-2{background:#84cc16}.score-bar-3{background:var(--green)}
+.score-bar-0{background:#e0e0e0}.score-bar-1{background:var(--yellow)}.score-bar-2{background:#1976d2}.score-bar-3{background:#1565c0}
 
 /* ── Stock Card ── */
 .stock-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden}
@@ -183,8 +185,9 @@ tr:hover td{background:#f8fafc}
 
 /* ── Misc ── */
 .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--text3);gap:8px}
-.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}
+.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 .empty{text-align:center;padding:60px;color:var(--text3)}
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .section-title{font-size:16px;font-weight:600;color:var(--text)}
@@ -226,7 +229,8 @@ body.dark .status-completed{background:rgba(16,185,129,.15);color:var(--green)}
 body.dark .status-running{background:rgba(245,158,11,.15);color:var(--yellow)}
 body.dark .status-error{background:rgba(239,68,68,.15);color:var(--red)}
 body.dark .nav-item.active{background:rgba(16,185,129,.15);color:var(--green)}
-body.dark .btn-primary{color:#000}
+body.dark .btn-primary{color:#fff}
+body.dark .nav-item.active{background:rgba(239,83,80,.15);color:var(--primary)}
 body.dark .caution-box{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:#fca5a5}
 
 /* ── Responsive grid ── */
@@ -279,6 +283,43 @@ body.mobile-nav #topbar{padding:10px 12px}
 </style>
 </head>
 <body>
+
+<!-- ══════════════════ LOGIN OVERLAY ══════════════════ -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#e3f2fd 0%,#f0f7ff 50%,#e8f5e9 100%);align-items:center;justify-content:center">
+  <div style="width:100%;max-width:400px;padding:0 20px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="width:64px;height:64px;background:linear-gradient(135deg,#1565c0,#1976d2);border-radius:18px;display:inline-flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 8px 24px rgba(21,101,192,.25);margin-bottom:16px">📈</div>
+      <div style="font-size:22px;font-weight:700;color:#1e293b;letter-spacing:-.3px">Stock Agent</div>
+      <div style="font-size:13px;color:#64748b;margin-top:4px">请登录以继续</div>
+    </div>
+    <div style="background:#fff;border-radius:20px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.12)">
+      <div style="margin-bottom:20px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase">用户名</label>
+        <input id="login-username" type="text" placeholder="请输入用户名" autocomplete="username"
+          style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;color:#1e293b;outline:none;transition:.2s;background:#f8fafc"
+          onfocus="this.style.borderColor='#d32f2f';this.style.background='#fff'"
+          onblur="this.style.borderColor='#e2e8f0';this.style.background='#f8fafc'"
+          onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()">
+      </div>
+      <div style="margin-bottom:24px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase">密码</label>
+        <input id="login-password" type="password" placeholder="请输入密码" autocomplete="current-password"
+          style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;color:#1e293b;outline:none;transition:.2s;background:#f8fafc"
+          onfocus="this.style.borderColor='#d32f2f';this.style.background='#fff'"
+          onblur="this.style.borderColor='#e2e8f0';this.style.background='#f8fafc'"
+          onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div id="login-error" style="display:none;background:#fee2e2;color:#dc2626;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;text-align:center"></div>
+      <button onclick="doLogin()" id="login-btn"
+        style="width:100%;padding:13px;background:linear-gradient(135deg,#1565c0,#1976d2);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;transition:.2s;box-shadow:0 4px 14px rgba(21,101,192,.3)"
+        onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 6px 20px rgba(21,101,192,.4)'"
+        onmouseout="this.style.transform='';this.style.boxShadow='0 4px 14px rgba(21,101,192,.3)'">
+        登 录
+      </button>
+    </div>
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:#94a3b8">Stock Agent v3 · 内部系统</div>
+  </div>
+</div>
 
 <!-- ══════════════════ SIDEBAR ══════════════════ -->
 <aside id="sidebar">
@@ -637,6 +678,8 @@ function applyTheme() {
 
 async function init() {
   applyTheme();
+  const authed = await checkAuth();
+  if (!authed) return;
   // Mobile nav detection
   updateMobileNav();
   window.addEventListener('resize', updateMobileNav);
@@ -700,8 +743,17 @@ function _setRunBtns(running) {
 async function triggerAnalysis(srcBtnId) {
   const btn = document.getElementById(srcBtnId || 'run-btn');
   if (btn && btn.disabled) return;
+  const confirmed = await showConfirmDialog({
+    icon: '⚡',
+    title: '触发选股分析',
+    message: '将调用 AI 扫描当前新闻并进行触发检测 + 精筛评分，完整流程约需 3-5 分钟。',
+    warning: '每次分析会消耗一定 Token，请勿频繁触发。',
+    confirmText: '开始分析',
+    cancelText: '取消',
+  });
+  if (!confirmed) return;
   try {
-    const r = await fetch('/api/run/trigger', {method: 'POST'});
+    const r = await fetch('/api/run/trigger', {method: 'POST', headers: {'X-Auth-Token': getToken()}});
     if (r.status === 409) { alert('分析正在运行中，请稍候...'); return; }
     if (!r.ok) { const d = await r.json(); alert('启动失败: ' + (d.detail||r.status)); return; }
     _setRunBtns(true);
@@ -709,11 +761,38 @@ async function triggerAnalysis(srcBtnId) {
   } catch(e) { alert('请求失败: ' + e); }
 }
 
+function showConfirmDialog({icon='⚠️', title, message, warning, confirmText='确认', cancelText='取消'}) {
+  return new Promise(resolve => {
+    const id = 'confirm-dialog-' + Date.now();
+    const el = document.createElement('div');
+    el.id = id;
+    el.style.cssText = 'position:fixed;inset:0;z-index:8888;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)';
+    el.innerHTML = `
+      <div style="background:#fff;border-radius:20px;padding:32px;max-width:380px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.18);animation:fadeInUp .2s ease">
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="font-size:40px;margin-bottom:12px">${icon}</div>
+          <div style="font-size:17px;font-weight:700;color:#1e293b;margin-bottom:8px">${title}</div>
+          <div style="font-size:13px;color:#64748b;line-height:1.6">${message}</div>
+          ${warning ? `<div style="margin-top:12px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:8px 12px;font-size:12px;color:#854d0e">${warning}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:10px">
+          <button id="${id}-cancel" style="flex:1;padding:11px;background:#f1f5f9;color:#64748b;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer">${cancelText}</button>
+          <button id="${id}-confirm" style="flex:1;padding:11px;background:linear-gradient(135deg,#1565c0,#1976d2);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(21,101,192,.3)">${confirmText}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    const close = (result) => { el.remove(); resolve(result); };
+    document.getElementById(`${id}-confirm`).onclick = () => close(true);
+    document.getElementById(`${id}-cancel`).onclick  = () => close(false);
+    el.onclick = (e) => { if (e.target === el) close(false); };
+  });
+}
+
 function _pollRunStatus() {
   if (_runPollTimer) clearTimeout(_runPollTimer);
   _runPollTimer = setTimeout(async () => {
     try {
-      const r = await fetch('/api/run/status');
+      const r = await fetch('/api/run/status', {headers: {'X-Auth-Token': getToken()}});
       const d = await r.json();
       if (d.running) {
         _pollRunStatus();
@@ -742,7 +821,8 @@ async function triggerCollect() {
   const btn = document.getElementById('news-collect-btn');
   if (btn && btn.disabled) return;
   try {
-    const r = await fetch('/api/news/collect', {method: 'POST'});
+    const r = await fetch('/api/news/collect', {method: 'POST', headers: {'X-Auth-Token': getToken()}});
+    if (r.status === 401) { showLogin(); return; }
     if (r.status === 409) { alert('新闻采集正在运行中，请稍候...'); return; }
     if (!r.ok) { const d = await r.json(); alert('启动失败: ' + (d.detail||r.status)); return; }
     btn.disabled = true;
@@ -756,7 +836,7 @@ function _pollCollectStatus() {
   if (_collectPollTimer) clearTimeout(_collectPollTimer);
   _collectPollTimer = setTimeout(async () => {
     try {
-      const r = await fetch('/api/news/collect/status');
+      const r = await fetch('/api/news/collect/status', {headers: {'X-Auth-Token': getToken()}});
       const d = await r.json();
       const btn = document.getElementById('news-collect-btn');
       if (d.running) {
@@ -816,12 +896,67 @@ function renderPage(page) {
 // ═══════════════════════════════════════════════════════
 // API
 // ═══════════════════════════════════════════════════════
-async function api(url, opts) {
+function getToken() { return localStorage.getItem('auth_token') || ''; }
+
+async function api(url, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers, {'X-Auth-Token': getToken()});
   try {
     const r = await fetch(url, opts);
+    if (r.status === 401) { showLogin(); return {}; }
     if (!r.ok) throw new Error(r.statusText);
     return await r.json();
   } catch(e) { console.error(url, e); return {}; }
+}
+
+function showLogin() {
+  const o = document.getElementById('login-overlay');
+  o.style.display = 'flex';
+  document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
+  document.getElementById('login-error').style.display = 'none';
+  setTimeout(() => document.getElementById('login-username').focus(), 100);
+}
+
+function hideLogin() {
+  document.getElementById('login-overlay').style.display = 'none';
+}
+
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value.trim();
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+  if (!username || !password) { errEl.textContent = '请输入用户名和密码'; errEl.style.display = 'block'; return; }
+  btn.textContent = '登录中...'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password}),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      localStorage.setItem('auth_token', d.token);
+      hideLogin();
+      init();
+    } else {
+      errEl.textContent = '用户名或密码错误';
+      errEl.style.display = 'block';
+      document.getElementById('login-password').value = '';
+      document.getElementById('login-password').focus();
+    }
+  } catch(e) {
+    errEl.textContent = '网络错误，请重试';
+    errEl.style.display = 'block';
+  }
+  btn.textContent = '登 录'; btn.disabled = false;
+}
+
+async function checkAuth() {
+  if (!getToken()) { showLogin(); return false; }
+  const r = await fetch('/api/dates', {headers: {'X-Auth-Token': getToken()}});
+  if (r.status === 401) { showLogin(); return false; }
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -850,9 +985,9 @@ async function loadDashboard() {
       <div class="card" style="grid-column:span 4;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
         <div><div class="card-title">📊 最新市场概况 (${d.latest_date})</div></div>
         <div style="display:flex;gap:24px;flex-wrap:wrap">
-          <div><div style="font-size:11px;color:var(--text2)">上涨家数</div><div style="font-size:20px;font-weight:700;color:var(--green)">${lr.up ?? '-'}</div></div>
-          <div><div style="font-size:11px;color:var(--text2)">下跌家数</div><div style="font-size:20px;font-weight:700;color:var(--red)">${lr.down ?? '-'}</div></div>
-          <div><div style="font-size:11px;color:var(--text2)">平均涨跌幅</div><div style="font-size:20px;font-weight:700;color:${pct>=0?'var(--green)':'var(--red)'}">${pct}%</div></div>
+          <div><div style="font-size:11px;color:var(--text2)">上涨家数</div><div style="font-size:20px;font-weight:700;color:var(--red)">${lr.up ?? '-'}</div></div>
+          <div><div style="font-size:11px;color:var(--text2)">下跌家数</div><div style="font-size:20px;font-weight:700;color:var(--green)">${lr.down ?? '-'}</div></div>
+          <div><div style="font-size:11px;color:var(--text2)">平均涨跌幅</div><div style="font-size:20px;font-weight:700;color:${pct>=0?'var(--red)':'var(--green)'}">${pct}%</div></div>
           <div style="flex:1;min-width:200px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">市场情绪</div><div style="font-size:13px;color:var(--text);line-height:1.5">${lr.sentiment || '-'}</div></div>
         </div>
       </div>
@@ -922,8 +1057,8 @@ function drawBarChart(canvasId, data) {
       labels: data.map(d => d.date),
       datasets: [{
         data: data.map(d => d.count),
-        backgroundColor: 'rgba(16,185,129,.5)',
-        borderColor: 'rgba(16,185,129,.8)',
+        backgroundColor: 'rgba(21,101,192,.45)',
+        borderColor: 'rgba(21,101,192,.8)',
         borderWidth: 1,
         borderRadius: 4,
       }]
@@ -932,8 +1067,8 @@ function drawBarChart(canvasId, data) {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: 'rgba(30,41,59,.5)' } },
-        y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: 'rgba(30,41,59,.5)' }, beginAtZero: true },
+        x: { ticks: { color: '#8c8c8c', font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.06)' } },
+        y: { ticks: { color: '#8c8c8c', font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.06)' }, beginAtZero: true },
       }
     }
   });
@@ -944,7 +1079,7 @@ function drawDoughnutChart(canvasId, data) {
   if (!canvas) return;
   if (S.newsChart) { S.newsChart.destroy(); S.newsChart = null; }
   if (!data.length) return;
-  const colors = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#06b6d4','#ec4899'];
+  const colors = ['#1565c0','#e03131','#ff8f00','#7c3aed','#0891b2','#059669','#ec4899'];
   S.newsChart = new Chart(canvas, {
     type: 'doughnut',
     data: {
@@ -954,7 +1089,7 @@ function drawDoughnutChart(canvasId, data) {
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 11 }, padding: 8, boxWidth: 10 } }
+        legend: { position: 'right', labels: { color: '#595959', font: { size: 11 }, padding: 8, boxWidth: 10 } }
       }
     }
   });
@@ -1558,9 +1693,10 @@ async function saveScheduleConfig() {
     ['schedule_review_days',    getCheckedDays('review')],
   ];
   try {
-    await Promise.all(pairs.map(([key, value]) =>
-      fetch(`/api/config/${key}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value})})
+    const results = await Promise.all(pairs.map(([key, value]) =>
+      api(`/api/config/${key}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value})})
     ));
+    if (results.some(r => r && r.detail)) throw new Error(results.find(r => r.detail).detail);
     const tip = document.getElementById('sched-tip');
     tip.style.display = 'inline';
     setTimeout(() => tip.style.display = 'none', 3000);
@@ -1573,8 +1709,8 @@ async function saveNewsConfig(id, srcKey, hoursKey) {
   const hoursVal = document.getElementById(`${id}-hours-sel`).value;
   try {
     await Promise.all([
-      fetch(`/api/config/${srcKey}`,   {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value: sourcesVal})}),
-      fetch(`/api/config/${hoursKey}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value: hoursVal})}),
+      api(`/api/config/${srcKey}`,   {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value: sourcesVal})}),
+      api(`/api/config/${hoursKey}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({value: hoursVal})}),
     ]);
     const tip = document.getElementById(`${id}-tip`);
     tip.style.display = 'inline';
@@ -1587,12 +1723,13 @@ async function saveConfig(key) {
   const value = input.value.trim();
   if (!value) return;
   try {
-    await fetch(`/api/config/${key}`, {
+    const r = await api(`/api/config/${key}`, {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({value}),
     });
-    input.style.borderColor = 'var(--green)';
+    if (r && r.detail) throw new Error(r.detail);
+    input.style.borderColor = 'var(--primary)';
     setTimeout(() => input.style.borderColor = 'var(--border)', 1500);
   } catch(e) {
     alert('保存失败: ' + e);
@@ -1603,14 +1740,14 @@ async function saveConfig(key) {
 // HELPERS
 // ═══════════════════════════════════════════════════════
 function scoreColor(score) {
-  if (score >= 15) return 'var(--green)';
-  if (score >= 10) return '#84cc16';
+  if (score >= 15) return '#1565c0';
+  if (score >= 10) return '#1976d2';
   if (score >= 6)  return 'var(--yellow)';
-  return 'var(--red)';
+  return 'var(--text3)';
 }
 
 function dimColor(score) {
-  return ['var(--red)','var(--yellow)','#84cc16','var(--green)'][score] || 'var(--text2)';
+  return ['var(--text3)','var(--yellow)','#1976d2','#1565c0'][score] || 'var(--text2)';
 }
 
 function fmt_time(s) {
@@ -1677,9 +1814,10 @@ async function runStockAnalysis() {
   try {
     const result = await fetch('/api/analyze-stocks', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-Auth-Token': getToken()},
       body: JSON.stringify({codes}),
     });
+    if (result.status === 401) { showLogin(); return; }
     if (!result.ok) {
       const err = await result.json().catch(() => ({}));
       throw new Error(err.detail || result.statusText);
