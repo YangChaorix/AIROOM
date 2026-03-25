@@ -352,7 +352,7 @@ def api_news(
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     rows = query_db(
-        f"SELECT id, collect_date, title, content, source, pub_time, collected_at, priority FROM news_items {where} ORDER BY COALESCE(time(pub_time), time(collected_at)) DESC LIMIT ? OFFSET ?",
+        f"SELECT id, collect_date, title, content, source, pub_time, collected_at, priority FROM news_items {where} ORDER BY COALESCE(pub_time, collected_at) DESC LIMIT ? OFFSET ?",
         params + [limit, offset],
     )
     total = query_db(f"SELECT COUNT(*) as cnt FROM news_items {where}", params, fetchall=False)
