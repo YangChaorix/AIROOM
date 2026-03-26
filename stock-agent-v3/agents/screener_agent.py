@@ -332,7 +332,10 @@ def run_screener_agent(trigger_result: dict) -> dict:
 
     llm = build_llm()
 
-    def _call_batch(rank_range: str, batch_label: str) -> list[dict]:
+    def _call_batch(rank_range: str, batch_label: str, exclude_codes: list[str] = None) -> list[dict]:
+        exclude_note = ""
+        if exclude_codes:
+            exclude_note = f"\n- ⚠️ 以下股票已在前面批次输出，本批次严禁重复：{', '.join(exclude_codes)}"
         human_content = f"""今日日期：{today}
 
 【触发Agent输出（初筛结果）】
@@ -346,7 +349,7 @@ def run_screener_agent(trigger_result: dict) -> dict:
 - 对于没有股票代码的企业，请根据你的知识推断其股票代码和基本情况进行评分。
 - 只输出 JSON，不要输出多余文字。
 - 每个维度理由控制在15字以内，推荐理由控制在60字以内。
-- ⚠️ 特别注意D2维度：原材料/能源涨价时，下游制造企业是成本承压方，D2评0分。"""
+- ⚠️ 特别注意D2维度：原材料/能源涨价时，下游制造企业是成本承压方，D2评0分。{exclude_note}"""
 
         logger.debug(f"【LLM 输入 - {batch_label} Human Message】\n" + human_content)
         messages = [
@@ -374,27 +377,52 @@ def run_screener_agent(trigger_result: dict) -> dict:
     batches_needed = (top_n + batch_size - 1) // batch_size
     logger.info(f"提示词解析 Top N={top_n}，将分 {batches_needed} 批调用LLM")
 
-    all_raw_batches = []
+    def _get_total(item: dict) -> int:
+        scores = item.get("scores", {})
+        return item.get("total_score") or sum(
+            v.get("score", 0) for v in scores.values() if isinstance(v, dict)
+        )
+
+    # code -> item，去重时保留 total_score 更高的条目
+    collected: dict[str, dict] = {}
+
+    def _merge_batch(batch: list[dict]) -> None:
+        for item in batch:
+            code = item.get("code", "")
+            if not code:
+                collected[f"_nocode_{len(collected)}"] = item
+                continue
+            if code not in collected or _get_total(item) > _get_total(collected[code]):
+                collected[code] = item
+
+    batches_run = 0
     for i in range(batches_needed):
         start = i * batch_size + 1
         end = min((i + 1) * batch_size, top_n)
         batch_label = f"第{i+1}批"
         rank_range = f"第{start}名到第{end}名（Top {start}~{end}）"
+        exclude = [c for c in collected if not c.startswith("_nocode_")] if i > 0 else None
         logger.info(f"调用LLM精筛评分（{batch_label}：Top {start}~{end}）...")
-        batch = _call_batch(rank_range, batch_label)
-        logger.info(f"{batch_label}完成，得到 {len(batch)} 条")
-        all_raw_batches.append(batch)
+        batch = _call_batch(rank_range, batch_label, exclude_codes=exclude)
+        logger.info(f"{batch_label}完成，得到 {len(batch)} 条，当前去重后共 {len(collected) + len([x for x in batch if x.get('code','') not in collected])} 条")
+        _merge_batch(batch)
+        batches_run += 1
 
-    # 按 stock_code 去重，保留先出现（排名更靠前）的条目
-    seen_codes = set()
-    deduped = []
-    for batch in all_raw_batches:
-        for item in batch:
-            code = item.get("code", "")
-            if code and code not in seen_codes:
-                seen_codes.add(code)
-                deduped.append(item)
-    all_items = deduped
+    # 不足 top_n 则补跑一批（最多 1 次）
+    if len(collected) < top_n:
+        shortage = top_n - len(collected)
+        current = len(collected)
+        exclude = [c for c in collected if not c.startswith("_nocode_")]
+        rank_range = f"第{current+1}名到第{top_n}名（补充 Top {current+1}~{top_n}）"
+        logger.info(f"去重后仅 {current} 条，不足 {top_n}，补跑一批补充 {shortage} 条...")
+        batch = _call_batch(rank_range, "补充批", exclude_codes=exclude)
+        logger.info(f"补充批完成，得到 {len(batch)} 条")
+        _merge_batch(batch)
+
+    # 按总分降序排列并重新编号
+    all_items = sorted(collected.values(), key=_get_total, reverse=True)
+    for idx, item in enumerate(all_items, 1):
+        item["rank"] = idx
 
     # 回填 trigger_index：从 company_data_list 构建 code → trigger_index 映射
     code_to_trigger_index = {
@@ -406,11 +434,10 @@ def run_screener_agent(trigger_result: dict) -> dict:
         code = item.get("code", "")
         if code and code in code_to_trigger_index:
             item["trigger_index"] = code_to_trigger_index[code]
-    batch_summary = "+".join(str(len(b)) for b in all_raw_batches)
     result = {
         "date": today,
         "top20": all_items,
-        "analysis_summary": f"共输出 {len(all_items)} 家企业（{batch_summary}，去重后{len(all_items)}）",
+        "analysis_summary": f"共输出 {len(all_items)} 家企业（{batches_run} 批{'，含补充批' if len(collected) >= top_n and batches_run > batches_needed else ''}，去重保留高分后 {len(all_items)} 条）",
     }
 
     result["date"] = today
