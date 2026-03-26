@@ -27,9 +27,12 @@ from tools import event_tracker
 logger = logging.getLogger(__name__)
 
 # ── 新闻分批压缩配置 ─────────────────────────────────────
-_NEWS_COMPRESS_THRESHOLD = 150   # 超过此条数启动分批压缩
-_NEWS_BATCH_SIZE = 100           # 每批新闻数量
+_NEWS_COMPRESS_THRESHOLD = 150   # 超过此条数启动一级压缩
+_NEWS_BATCH_SIZE = 100           # 一级压缩每批新闻数量
+_SUMMARY_COMPRESS_THRESHOLD = 60 # 一级摘要超过此条数启动二级压缩
+_SUMMARY_BATCH_SIZE = 20         # 二级压缩每批摘要数量
 
+# 一级压缩提示词：原始新闻 → 关键事件
 _SUMMARIZE_PROMPT = """你是新闻摘要助手。请从以下新闻中提取5-10条对A股市场可能有影响的关键事件。
 
 要求：
@@ -37,6 +40,21 @@ _SUMMARIZE_PROMPT = """你是新闻摘要助手。请从以下新闻中提取5-1
 - 合并同一事件的多条重复报道，只保留信息最完整的一条
 - 每条保留：标题、来源、时间、核心内容（1-2句话，不超过80字）
 - 无实质内容的资讯（人事变动、业绩预告、一般公告）直接丢弃
+- 只输出JSON数组，不要其他文字
+
+输出格式：
+[
+  {"标题": "...", "来源": "...", "时间": "...", "内容": "..."},
+  ...
+]"""
+
+# 二级压缩提示词：一级摘要 → 核心事件
+_SUMMARIZE_L2_PROMPT = """你是新闻摘要助手。以下是已经初步筛选过的关键事件摘要，请进一步合并去重，提炼出最核心的5条事件。
+
+要求：
+- 跨批次同一事件合并为一条，保留最完整的信息
+- 优先保留政策类、涨价类、重大转折类事件
+- 每条核心内容不超过100字
 - 只输出JSON数组，不要其他文字
 
 输出格式：
@@ -63,12 +81,13 @@ def _flatten_news(news_data: dict) -> list[dict]:
     return items
 
 
-def _summarize_batch(batch: list[dict], batch_idx: int, llm) -> list[dict]:
-    """把一批新闻压缩成关键事件列表，失败时降级保留标题"""
+def _call_compress_llm(system_prompt: str, batch: list[dict],
+                       batch_label: str, llm, fallback_limit: int = 10) -> list[dict]:
+    """通用压缩调用，失败时降级保留前 fallback_limit 条标题"""
     batch_text = json.dumps(batch, ensure_ascii=False, indent=2)
     messages = [
-        SystemMessage(content=_SUMMARIZE_PROMPT),
-        HumanMessage(content=f"第{batch_idx}批新闻（{len(batch)}条）：\n\n{batch_text}"),
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=f"{batch_label}（{len(batch)}条）：\n\n{batch_text}"),
     ]
     try:
         resp = llm.invoke(messages)
@@ -79,21 +98,22 @@ def _summarize_batch(batch: list[dict], batch_idx: int, llm) -> list[dict]:
             content = content.split("```")[1].split("```")[0].strip()
         result = json.loads(content)
         if isinstance(result, list):
-            logger.info(f"  第{batch_idx}批压缩：{len(batch)}条 → {len(result)}条关键事件")
             return result
     except Exception as e:
-        logger.warning(f"  第{batch_idx}批压缩失败({e})，降级保留前10条标题")
-    # 降级：只保留标题和来源，截取前10条
+        logger.warning(f"  {batch_label} 压缩失败({e})，降级保留前{fallback_limit}条")
     return [
         {"标题": item.get("标题", ""), "来源": item.get("来源", ""),
          "时间": item.get("时间", ""), "内容": ""}
-        for item in batch[:10]
+        for item in batch[:fallback_limit]
     ]
 
 
 def _compress_news_if_needed(news_data: dict, llm) -> tuple[str, bool]:
     """
-    新闻超过阈值时分批压缩，否则直接返回原始文本。
+    两级压缩：
+      一级：原始新闻 > 150条 → 每批100条压缩为5-10条关键事件
+      二级：一级摘要 > 60条  → 每批20条再压缩为5条核心事件
+    不超阈值时直接返回原始文本。
     返回 (news_text_for_llm, was_compressed)
     """
     all_items = _flatten_news(news_data)
@@ -103,26 +123,56 @@ def _compress_news_if_needed(news_data: dict, llm) -> tuple[str, bool]:
         logger.info(f"新闻总数 {total} 条，未超过阈值({_NEWS_COMPRESS_THRESHOLD})，直接分析")
         return json.dumps(news_data, ensure_ascii=False, indent=2), False
 
-    batches = (total + _NEWS_BATCH_SIZE - 1) // _NEWS_BATCH_SIZE
+    # ── 一级压缩 ──────────────────────────────────────────
+    l1_batches = (total + _NEWS_BATCH_SIZE - 1) // _NEWS_BATCH_SIZE
     logger.info(
-        f"新闻总数 {total} 条，超过阈值({_NEWS_COMPRESS_THRESHOLD})，"
-        f"启动分批压缩（共{batches}批，每批{_NEWS_BATCH_SIZE}条）"
+        f"[一级压缩] 新闻 {total} 条，分 {l1_batches} 批（每批{_NEWS_BATCH_SIZE}条）压缩..."
     )
-
-    summaries = []
+    l1_summaries = []
     for i in range(0, total, _NEWS_BATCH_SIZE):
         batch = all_items[i:i + _NEWS_BATCH_SIZE]
         batch_idx = i // _NEWS_BATCH_SIZE + 1
-        logger.info(f"压缩第{batch_idx}/{batches}批（第{i+1}-{i+len(batch)}条）...")
-        summaries.extend(_summarize_batch(batch, batch_idx, llm))
+        label = f"一级第{batch_idx}/{l1_batches}批新闻"
+        result = _call_compress_llm(_SUMMARIZE_PROMPT, batch, label, llm)
+        logger.info(f"  {label}：{len(batch)}条 → {len(result)}条关键事件")
+        l1_summaries.extend(result)
 
-    logger.info(f"压缩完成：{total}条原始新闻 → {len(summaries)}条关键事件摘要")
+    logger.info(f"[一级压缩完成] {total}条原始新闻 → {len(l1_summaries)}条关键事件")
+
+    # ── 二级压缩（一级摘要仍过多时） ─────────────────────
+    if len(l1_summaries) <= _SUMMARY_COMPRESS_THRESHOLD:
+        logger.info(f"一级摘要 {len(l1_summaries)} 条，未超过二级阈值({_SUMMARY_COMPRESS_THRESHOLD})，无需二级压缩")
+        final_summaries = l1_summaries
+        compress_note = f"原始{total}条 →（一级压缩）→ {len(final_summaries)}条关键事件"
+    else:
+        l2_batches = (len(l1_summaries) + _SUMMARY_BATCH_SIZE - 1) // _SUMMARY_BATCH_SIZE
+        logger.info(
+            f"[二级压缩] 一级摘要 {len(l1_summaries)} 条，超过阈值({_SUMMARY_COMPRESS_THRESHOLD})，"
+            f"分 {l2_batches} 批再压缩..."
+        )
+        l2_summaries = []
+        for i in range(0, len(l1_summaries), _SUMMARY_BATCH_SIZE):
+            batch = l1_summaries[i:i + _SUMMARY_BATCH_SIZE]
+            batch_idx = i // _SUMMARY_BATCH_SIZE + 1
+            label = f"二级第{batch_idx}/{l2_batches}批摘要"
+            result = _call_compress_llm(_SUMMARIZE_L2_PROMPT, batch, label, llm, fallback_limit=5)
+            logger.info(f"  {label}：{len(batch)}条 → {len(result)}条核心事件")
+            l2_summaries.extend(result)
+
+        logger.info(
+            f"[二级压缩完成] {len(l1_summaries)}条一级摘要 → {len(l2_summaries)}条核心事件"
+        )
+        final_summaries = l2_summaries
+        compress_note = (
+            f"原始{total}条 →（一级压缩）→ {len(l1_summaries)}条"
+            f" →（二级压缩）→ {len(final_summaries)}条核心事件"
+        )
 
     stats = dict(news_data.get("采集统计", {}))
-    stats["压缩说明"] = f"原始{total}条，分{batches}批压缩为{len(summaries)}条关键事件"
+    stats["压缩说明"] = compress_note
     compressed = {
         "采集统计": stats,
-        "关键事件摘要（已压缩）": summaries,
+        "关键事件摘要（已压缩）": final_summaries,
     }
     return json.dumps(compressed, ensure_ascii=False, indent=2), True
 
