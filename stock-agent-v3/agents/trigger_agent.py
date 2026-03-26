@@ -1,10 +1,12 @@
 """
-Agent 1：信息触发 Agent（v1.1 升级）
+Agent 1：信息触发 Agent（v1.2 升级）
 每日 09:15 运行，扫描三类触发条件（C1/C4/C6）
 v1.1 新增：
   - 事件新鲜度评估（freshness）
   - Serper Web 搜索政策新闻
   - 触发后调用 event_tracker.mark_event_seen()
+v1.2 新增：
+  - 新闻分批压缩：超过阈值时先按批摘要再合并分析，避免 context 截断
 输出：命中信息 + 受影响行业/企业列表（JSON）
 """
 
@@ -23,6 +25,107 @@ from tools.search_tools import search_multiple_queries
 from tools import event_tracker
 
 logger = logging.getLogger(__name__)
+
+# ── 新闻分批压缩配置 ─────────────────────────────────────
+_NEWS_COMPRESS_THRESHOLD = 150   # 超过此条数启动分批压缩
+_NEWS_BATCH_SIZE = 100           # 每批新闻数量
+
+_SUMMARIZE_PROMPT = """你是新闻摘要助手。请从以下新闻中提取5-10条对A股市场可能有影响的关键事件。
+
+要求：
+- 只保留有实质内容的事件（政策、价格变动、重大事件、监管动作）
+- 合并同一事件的多条重复报道，只保留信息最完整的一条
+- 每条保留：标题、来源、时间、核心内容（1-2句话，不超过80字）
+- 无实质内容的资讯（人事变动、业绩预告、一般公告）直接丢弃
+- 只输出JSON数组，不要其他文字
+
+输出格式：
+[
+  {"标题": "...", "来源": "...", "时间": "...", "内容": "..."},
+  ...
+]"""
+
+
+def _flatten_news(news_data: dict) -> list[dict]:
+    """把按来源分组的 news_data 展开为扁平列表"""
+    skip_keys = {"采集统计"}
+    items = []
+    for key, val in news_data.items():
+        if key in skip_keys or not isinstance(val, list):
+            continue
+        for item in val:
+            items.append({
+                "标题": item.get("标题", ""),
+                "内容": item.get("内容", ""),
+                "时间": item.get("时间", ""),
+                "来源": key,
+            })
+    return items
+
+
+def _summarize_batch(batch: list[dict], batch_idx: int, llm) -> list[dict]:
+    """把一批新闻压缩成关键事件列表，失败时降级保留标题"""
+    batch_text = json.dumps(batch, ensure_ascii=False, indent=2)
+    messages = [
+        SystemMessage(content=_SUMMARIZE_PROMPT),
+        HumanMessage(content=f"第{batch_idx}批新闻（{len(batch)}条）：\n\n{batch_text}"),
+    ]
+    try:
+        resp = llm.invoke(messages)
+        content = resp.content.strip()
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+        result = json.loads(content)
+        if isinstance(result, list):
+            logger.info(f"  第{batch_idx}批压缩：{len(batch)}条 → {len(result)}条关键事件")
+            return result
+    except Exception as e:
+        logger.warning(f"  第{batch_idx}批压缩失败({e})，降级保留前10条标题")
+    # 降级：只保留标题和来源，截取前10条
+    return [
+        {"标题": item.get("标题", ""), "来源": item.get("来源", ""),
+         "时间": item.get("时间", ""), "内容": ""}
+        for item in batch[:10]
+    ]
+
+
+def _compress_news_if_needed(news_data: dict, llm) -> tuple[str, bool]:
+    """
+    新闻超过阈值时分批压缩，否则直接返回原始文本。
+    返回 (news_text_for_llm, was_compressed)
+    """
+    all_items = _flatten_news(news_data)
+    total = len(all_items)
+
+    if total <= _NEWS_COMPRESS_THRESHOLD:
+        logger.info(f"新闻总数 {total} 条，未超过阈值({_NEWS_COMPRESS_THRESHOLD})，直接分析")
+        return json.dumps(news_data, ensure_ascii=False, indent=2), False
+
+    batches = (total + _NEWS_BATCH_SIZE - 1) // _NEWS_BATCH_SIZE
+    logger.info(
+        f"新闻总数 {total} 条，超过阈值({_NEWS_COMPRESS_THRESHOLD})，"
+        f"启动分批压缩（共{batches}批，每批{_NEWS_BATCH_SIZE}条）"
+    )
+
+    summaries = []
+    for i in range(0, total, _NEWS_BATCH_SIZE):
+        batch = all_items[i:i + _NEWS_BATCH_SIZE]
+        batch_idx = i // _NEWS_BATCH_SIZE + 1
+        logger.info(f"压缩第{batch_idx}/{batches}批（第{i+1}-{i+len(batch)}条）...")
+        summaries.extend(_summarize_batch(batch, batch_idx, llm))
+
+    logger.info(f"压缩完成：{total}条原始新闻 → {len(summaries)}条关键事件摘要")
+
+    stats = dict(news_data.get("采集统计", {}))
+    stats["压缩说明"] = f"原始{total}条，分{batches}批压缩为{len(summaries)}条关键事件"
+    compressed = {
+        "采集统计": stats,
+        "关键事件摘要（已压缩）": summaries,
+    }
+    return json.dumps(compressed, ensure_ascii=False, indent=2), True
+
 
 TRIGGER_SYSTEM_PROMPT = """你是一个专注A股市场的信息扫描分析师。你的任务是每天早晨扫描当日最新信息，识别可能对特定行业或企业产生实质性影响的事件，为后续选股分析提供初步范围。
 
@@ -230,7 +333,19 @@ def run_trigger_agent() -> dict:
             f"各来源条数：{stats.get('各来源条数', {})}"
         )
 
-    news_text = json.dumps(news_data, ensure_ascii=False, indent=2)
+    # Step 4.5: 新闻过多时先分批压缩（v1.2）
+    try:
+        from tools.db import db as _db
+        _content = _db.get_active_prompt("trigger", "system_prompt")
+    except Exception:
+        _content = None
+    _trigger_prompt = _content if _content else TRIGGER_SYSTEM_PROMPT
+
+    llm = build_llm()
+    news_text, was_compressed = _compress_news_if_needed(news_data, llm)
+    if was_compressed:
+        cache_info += "\n⚠️ 新闻条数较多，已分批压缩为关键事件摘要后分析，上下文完整保留。"
+
     human_content = f"""今日日期：{today}
 
 请分析以下新闻数据，识别满足触发条件的信息：
@@ -245,17 +360,10 @@ def run_trigger_agent() -> dict:
 
     # Step 5: 调用LLM
     logger.info("调用LLM分析触发条件...")
-    try:
-        from tools.db import db as _db
-        _content = _db.get_active_prompt("trigger", "system_prompt")
-    except Exception:
-        _content = None
-    _trigger_prompt = _content if _content else TRIGGER_SYSTEM_PROMPT
 
     logger.debug("【LLM 输入 - System Prompt】\n" + _trigger_prompt)
     logger.debug("【LLM 输入 - Human Message】\n" + human_content)
 
-    llm = build_llm()
     messages = [
         SystemMessage(content=_trigger_prompt),
         HumanMessage(content=human_content),
