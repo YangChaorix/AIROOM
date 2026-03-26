@@ -330,10 +330,10 @@ body.mobile-nav #topbar{padding:10px 12px}
   <nav class="sb-nav">
     <div class="sb-section">主要功能</div>
     <div class="nav-item active" data-page="dashboard"><span class="icon">📊</span><span class="label">控制台</span></div>
-    <div class="nav-item" data-page="picks"><span class="icon">🏆</span><span class="label">精选股票</span></div>
-    <div class="nav-item" data-page="triggers"><span class="icon">⚡</span><span class="label">触发事件</span></div>
-    <div class="nav-item" data-page="review"><span class="icon">📋</span><span class="label">市场复盘</span></div>
     <div class="nav-item" data-page="news"><span class="icon">📰</span><span class="label">新闻动态</span></div>
+    <div class="nav-item" data-page="triggers"><span class="icon">⚡</span><span class="label">触发事件</span></div>
+    <div class="nav-item" data-page="picks"><span class="icon">🏆</span><span class="label">精选股票</span></div>
+    <div class="nav-item" data-page="review"><span class="icon">📋</span><span class="label">市场复盘</span></div>
     <div class="nav-item" data-page="analyze"><span class="icon">🔍</span><span class="label">个股分析</span></div>
     <div class="sb-section" style="margin-top:8px">系统管理</div>
     <div class="nav-item" data-page="logs"><span class="icon">📜</span><span class="label">运行日志</span></div>
@@ -406,6 +406,7 @@ body.mobile-nav #topbar{padding:10px 12px}
               <option value="">加载中...</option>
             </select>
             <button id="picks-run-btn" class="btn btn-primary btn-sm" onclick="triggerAnalysis('picks-run-btn')">▶ 触发分析</button>
+            <button id="picks-screener-btn" class="btn btn-ghost btn-sm" onclick="triggerScreenerOnly()">♻ 重跑精筛</button>
           </div>
         </div>
         <div id="picks-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
@@ -419,7 +420,11 @@ body.mobile-nav #topbar{padding:10px 12px}
           <div class="section-title">⚡ 触发事件 · <span id="triggers-date-label" class="badge badge-yellow">-</span></div>
           <div style="display:flex;align-items:center;gap:8px">
             <select id="triggers-date-sel" style="font-size:12px;padding:2px 6px" onchange="onTriggersDateChange()"><option value="">加载中...</option></select>
-            <div id="triggers-count" style="font-size:12px;color:var(--text2)"></div>
+            <span style="font-size:12px;color:var(--text2)">批次：</span>
+            <select id="triggers-run-sel" style="font-size:12px;padding:2px 6px" onchange="onTriggersRunChange()">
+              <option value="">加载中...</option>
+            </select>
+            <button id="btn-retrigger" class="btn btn-ghost" style="font-size:13px;padding:5px 14px;white-space:nowrap" onclick="retriggerOnly()">⚡ 重新触发</button>
           </div>
         </div>
         <div id="triggers-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
@@ -430,8 +435,15 @@ body.mobile-nav #topbar{padding:10px 12px}
     <div class="page" id="page-review">
       <div class="page-scroll">
         <div class="section-header">
-          <div class="section-title">📋 市场复盘</div>
-          <select id="review-date-sel" style="margin:0" onchange="loadReview(this.value)"><option value="">选择日期</option></select>
+          <div class="section-title">📋 市场复盘 · <span id="review-date-label" class="badge badge-blue"></span></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="review-date-sel" style="margin:0" onchange="onReviewDateChange()"><option value="">选择日期</option></select>
+            <span style="font-size:12px;color:var(--text2)">批次：</span>
+            <select id="review-run-sel" style="font-size:12px;padding:2px 6px" onchange="onReviewRunChange()">
+              <option value="">加载中...</option>
+            </select>
+            <button id="btn-review" class="btn btn-primary" style="font-size:13px;padding:5px 14px;white-space:nowrap" onclick="triggerReview()">触发复盘</button>
+          </div>
         </div>
         <div id="review-stats" class="grid-4" style="margin-bottom:16px"></div>
         <div class="card">
@@ -706,10 +718,16 @@ async function loadDates() {
   const opts = S.dates.map((d, i) => `<option value="${d}" ${i===0?'selected':''}>${d}</option>`).join('');
   if (S.dates.length) S.date = S.dates[0];
   document.getElementById('date-selector').innerHTML = opts;
-  document.getElementById('review-date-sel').innerHTML = opts;
   document.getElementById('picks-date-sel').innerHTML = opts;
   document.getElementById('triggers-date-sel').innerHTML = opts;
   document.getElementById('news-date-sel').innerHTML = opts;
+
+  // 复盘日期选择器单独从有报告的日期里取，避免因新闻数据导致默认选今天但无报告
+  const rv = await api('/api/review-reports?limit=60');
+  const reviewDates = (rv.items || []).map(r => r.run_date).filter(Boolean);
+  const rvOpts = reviewDates.map((d, i) => `<option value="${d}" ${i===0?'selected':''}>${d}</option>`).join('');
+  document.getElementById('review-date-sel').innerHTML = rvOpts || '<option value="">暂无复盘报告</option>';
+  if (reviewDates.length) S.reviewDate = reviewDates[0];
 }
 
 function onDateChange() {
@@ -863,6 +881,144 @@ function _pollCollectStatus() {
 }
 
 // ═══════════════════════════════════════════════════════
+// SCREENER ONLY (重跑精筛)
+// ═══════════════════════════════════════════════════════
+let _screenerPollTimer = null;
+
+async function triggerScreenerOnly() {
+  const btn = document.getElementById('picks-screener-btn');
+  if (btn && btn.disabled) return;
+  const confirmed = await showConfirmDialog({
+    icon: '♻',
+    title: '重跑精筛',
+    message: '将使用今日已保存的触发数据重新运行精筛 Agent（不重新消耗触发 token），约需 2-4 分钟。',
+    warning: '请确保今日已运行过触发检测，否则将无数据可用。',
+    confirmText: '开始重跑',
+  });
+  if (!confirmed) return;
+  try {
+    const r = await fetch('/api/run/screener', {method:'POST', headers:{'X-Auth-Token': getToken(), 'Content-Type': 'application/json'}, body: JSON.stringify({date: S.date})});
+    if (!r.ok) { const d = await r.json(); alert('启动失败: ' + (d.detail||r.status)); return; }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ 精筛中...';
+      btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
+    }
+    _pollScreenerStatus();
+  } catch(e) { alert('请求失败: ' + e); }
+}
+
+function _pollScreenerStatus() {
+  if (_screenerPollTimer) clearTimeout(_screenerPollTimer);
+  _screenerPollTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/run/screener/status', {headers: {'X-Auth-Token': getToken()}});
+      const d = await r.json();
+      const btn = document.getElementById('picks-screener-btn');
+      if (d.running) {
+        _pollScreenerStatus();
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.classList.remove('btn-primary'); btn.classList.add('btn-ghost');
+          if (d.status === 'success') {
+            btn.textContent = '✓ 精筛完成';
+            setTimeout(() => { btn.textContent = '♻ 重跑精筛'; }, 3000);
+            await loadDates();
+            navigate('picks');
+          } else if (d.status === 'error') {
+            btn.textContent = '✗ 精筛失败';
+            setTimeout(() => { btn.textContent = '♻ 重跑精筛'; }, 4000);
+            alert('精筛失败:\n' + (d.error || '未知错误'));
+          } else {
+            btn.textContent = '♻ 重跑精筛';
+          }
+        }
+      }
+    } catch(e) { _pollScreenerStatus(); }
+  }, 3000);
+}
+
+// ═══════════════════════════════════════════════════════
+// TRIGGER ONLY (重新触发)
+// ═══════════════════════════════════════════════════════
+let _retriggerPollTimer = null;
+
+async function retriggerOnly() {
+  const btn = document.getElementById('btn-retrigger');
+  if (btn && btn.disabled) return;
+  const confirmed = await showConfirmDialog({
+    icon: '⚡',
+    title: '重新触发',
+    message: '将重新扫描当前新闻并刷新触发数据（不运行精筛），约需 1-3 分钟。',
+    warning: '将新增一次触发批次，Token 会有消耗。',
+    confirmText: '开始触发',
+  });
+  if (!confirmed) return;
+  try {
+    const r = await fetch('/api/run/trigger', {
+      method: 'POST',
+      headers: {'X-Auth-Token': getToken(), 'Content-Type': 'application/json'},
+      body: JSON.stringify({mode: 'trigger_only'}),
+    });
+    if (r.status === 409) { alert('分析正在运行中，请稍候...'); return; }
+    if (!r.ok) { const d = await r.json(); alert('启动失败: ' + (d.detail||r.status)); return; }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ 触发中...';
+      btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
+    }
+    _pollRetriggerStatus();
+  } catch(e) { alert('请求失败: ' + e); }
+}
+
+function _pollRetriggerStatus() {
+  if (_retriggerPollTimer) clearTimeout(_retriggerPollTimer);
+  _retriggerPollTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/run/status', {headers: {'X-Auth-Token': getToken()}});
+      const d = await r.json();
+      const btn = document.getElementById('btn-retrigger');
+      if (d.running) {
+        _pollRetriggerStatus();
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.classList.remove('btn-primary'); btn.classList.add('btn-ghost');
+          if (d.status === 'success') {
+            btn.textContent = '✓ 触发完成';
+            setTimeout(() => { btn.textContent = '⚡ 重新触发'; }, 3000);
+            await loadDates();
+            loadTriggers();
+          } else if (d.status === 'error') {
+            btn.textContent = '✗ 触发失败';
+            setTimeout(() => { btn.textContent = '⚡ 重新触发'; }, 4000);
+            alert('触发失败:\n' + (d.error || '未知错误'));
+          } else {
+            btn.textContent = '⚡ 重新触发';
+          }
+        }
+      }
+    } catch(e) { _pollRetriggerStatus(); }
+  }, 3000);
+}
+
+function showTriggerForStock(triggerIndex) {
+  navigate('triggers');
+  // 等待 triggers 页渲染完成后高亮对应卡片
+  setTimeout(() => {
+    const cards = document.querySelectorAll('#triggers-list .trigger-card');
+    if (cards.length >= triggerIndex) {
+      const card = cards[triggerIndex - 1];
+      card.scrollIntoView({behavior: 'smooth', block: 'center'});
+      card.style.outline = '2px solid var(--yellow)';
+      card.style.transition = 'outline 0.3s';
+      setTimeout(() => { card.style.outline = ''; }, 3000);
+    }
+  }, 600);
+}
+
+// ═══════════════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════════════
 const PAGES_WITH_DATE = new Set([]);
@@ -883,7 +1039,7 @@ function renderPage(page) {
     case 'dashboard': loadDashboard(); break;
     case 'picks':     loadPicks(); break;
     case 'triggers':  loadTriggers(); break;
-    case 'review':    loadReview(S.date); break;
+    case 'review':    loadReview(S.reviewDate || S.date); break;
     case 'news':      loadNews(1); break;
     case 'logs':      loadLogs(1); break;
     case 'events':    loadEvents(1); break;
@@ -1008,7 +1164,7 @@ async function loadDashboard() {
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
       <span class="status-pill status-${st}">${st}</span>
       <span style="font-size:12px;color:var(--text)">${r.run_date}</span>
-      <span class="badge badge-gray">${r.run_mode}</span>
+      <span class="badge badge-gray">${fmt_run_mode(r.run_mode)}</span>
       <span style="margin-left:auto;font-size:11px;color:var(--text3)">${dur}</span>
     </div>`;
   }).join('') || '<div class="empty" style="padding:20px">暂无数据</div>';
@@ -1134,7 +1290,7 @@ async function onPicksRunChange() {
 
 async function _loadPicksByRunId(runId) {
   document.getElementById('picks-list').innerHTML = loading();
-  const d = await api(`/api/screener-stocks?date=${S.date}&run_id=${encodeURIComponent(runId)}`);
+  const d = await api(`/api/screener-stocks/with-triggers?date=${S.date}&run_id=${encodeURIComponent(runId)}`);
   const stocks = d.items || [];
   if (!stocks.length) { document.getElementById('picks-list').innerHTML = empty('该批次暂无数据'); return; }
   document.getElementById('picks-list').innerHTML = stocks.map(s => renderStockCard(s)).join('');
@@ -1168,6 +1324,7 @@ function renderStockCard(s) {
         <div class="stock-name">${s.stock_name}</div>
         <div class="stock-code">${s.stock_code}
           <span class="badge badge-blue" style="margin-left:6px">${s.run_id ? s.run_id.substring(0,19) : s.run_date}</span>
+          ${s.trigger_index != null ? `<span class="badge badge-yellow" style="margin-left:4px;cursor:pointer" onclick="event.stopPropagation();showTriggerForStock(${s.trigger_index})">⚡ 触发#${s.trigger_index}</span>` : ''}
         </div>
       </div>
       <div class="total-score">
@@ -1181,6 +1338,16 @@ function renderStockCard(s) {
         <div class="score-section-title">六维评分</div>
         <div class="dim-grid">${dims}</div>
       </div>
+      ${s.trig_summary ? `<div style="margin-bottom:12px;padding:10px 12px;background:rgba(245,158,11,.08);border-left:3px solid var(--yellow);border-radius:4px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span style="font-size:11px;font-weight:600;color:var(--yellow)">触发事件 #${s.trigger_index}</span>
+          ${s.trig_type ? `<span class="badge badge-yellow" style="font-size:10px">${s.trig_type}</span>` : ''}
+          ${s.trig_strength ? `<span class="badge ${{ HIGH:'badge-red', MEDIUM:'badge-yellow', LOW:'badge-blue' }[s.trig_strength]||'badge-gray'}" style="font-size:10px">${s.trig_strength}</span>` : ''}
+          ${s.trig_freshness ? `<span class="badge badge-gray" style="font-size:10px">新鲜度:${s.trig_freshness}</span>` : ''}
+        </div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5">${s.trig_summary}</div>
+        ${Array.isArray(s.trig_industries) && s.trig_industries.length ? `<div style="margin-top:6px" class="tag-list">${s.trig_industries.map(i=>`<span class="tag">${i}</span>`).join('')}</div>` : ''}
+      </div>` : ''}
       <div class="info-row">
         <div class="info-block">
           <div class="info-block-title">⚡ 触发原因</div>
@@ -1214,15 +1381,37 @@ function onTriggersDateChange() {
   loadTriggers();
 }
 
+async function onTriggersRunChange() {
+  const runId = document.getElementById('triggers-run-sel').value;
+  if (runId) await _loadTriggersByRunId(runId);
+}
+
 async function loadTriggers() {
   const dsel = document.getElementById('triggers-date-sel');
   if (dsel && dsel.value !== S.date && S.dates && S.dates.includes(S.date)) dsel.value = S.date;
   document.getElementById('triggers-date-label').textContent = S.date || '-';
   document.getElementById('triggers-list').innerHTML = loading();
-  const d = await api(`/api/triggers?date=${S.date}`);
+
+  const runsData = await api(`/api/triggers/runs?date=${S.date}`);
+  const runs = runsData.runs || [];
+  const sel = document.getElementById('triggers-run-sel');
+  if (!runs.length) {
+    sel.innerHTML = '<option value="">无数据</option>';
+    document.getElementById('triggers-list').innerHTML = empty('该日期暂无触发事件');
+    return;
+  }
+  sel.innerHTML = runs.map((r, i) =>
+    `<option value="${r}">${r.substring(11, 16)} 第${runs.length - i}次触发</option>`
+  ).join('');
+  sel.value = runs[0];
+  await _loadTriggersByRunId(runs[0]);
+}
+
+async function _loadTriggersByRunId(runId) {
+  document.getElementById('triggers-list').innerHTML = loading();
+  const d = await api(`/api/triggers?date=${S.date}&run_id=${encodeURIComponent(runId)}`);
   const items = d.items || [];
-  document.getElementById('triggers-count').textContent = `共 ${items.length} 个事件`;
-  if (!items.length) { document.getElementById('triggers-list').innerHTML = empty('该日期暂无触发事件'); return; }
+  if (!items.length) { document.getElementById('triggers-list').innerHTML = empty('该批次暂无触发事件'); return; }
   document.getElementById('triggers-list').innerHTML = items.map(t => renderTriggerCard(t)).join('');
 }
 
@@ -1264,28 +1453,107 @@ function renderTriggerCard(t) {
 // ═══════════════════════════════════════════════════════
 // REVIEW
 // ═══════════════════════════════════════════════════════
+let _reviewPollTimer = null;
+async function triggerReview() {
+  const btn = document.getElementById('btn-review');
+  btn.disabled = true;
+  btn.textContent = '运行中…';
+  try {
+    await api('/api/run/review', {method: 'POST'});
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '触发复盘';
+    alert('触发失败：' + (e.message || e));
+    return;
+  }
+  _reviewPollTimer = setInterval(async () => {
+    const s = await api('/api/run/review/status');
+    if (!s.running) {
+      clearInterval(_reviewPollTimer);
+      btn.disabled = false;
+      btn.textContent = '触发复盘';
+      if (s.status === 'success') {
+        // 刷新日期列表，使用 DB 返回的最新复盘日期（避免 UTC 与服务器时区不一致）
+        await loadDates();
+        loadReview(S.reviewDate);
+      } else {
+        alert('复盘失败：' + (s.error || '未知错误'));
+      }
+    }
+  }, 3000);
+}
+
+function _reviewDateLabel(dateStr) {
+  if (!dateStr) return '';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const d = new Date(dateStr + 'T00:00:00');
+  if (d.getTime() === today.getTime()) return '今日';
+  if (d.getTime() === yesterday.getTime()) return '昨日';
+  return dateStr;
+}
+
+async function onReviewDateChange() {
+  const sel = document.getElementById('review-date-sel');
+  if (sel) S.reviewDate = sel.value;
+  await loadReview(sel.value);
+}
+
+async function onReviewRunChange() {
+  const runId = document.getElementById('review-run-sel').value;
+  if (runId) await _loadReviewByRunId(S.reviewDate, runId);
+}
+
 async function loadReview(date) {
-  if (!date) date = S.date;
+  if (!date) date = S.reviewDate || S.date;
+  if (!date) { document.getElementById('review-content').innerHTML = empty('暂无复盘数据'); return; }
+  S.reviewDate = date;
+  const dsel = document.getElementById('review-date-sel');
+  if (dsel && dsel.value !== date) dsel.value = date;
   document.getElementById('review-content').innerHTML = loading();
   document.getElementById('review-stats').innerHTML = '';
-  const d = await api(`/api/review-report?date=${date}`);
-  if (!d || !d.run_date) { document.getElementById('review-content').innerHTML = empty('该日期暂无复盘报告'); return; }
+  document.getElementById('review-date-label').textContent = '';
+
+  const runsData = await api(`/api/review-reports/runs?date=${date}`);
+  const runs = runsData.runs || [];
+  const sel = document.getElementById('review-run-sel');
+  if (!runs.length) {
+    sel.innerHTML = '<option value="">无数据</option>';
+    document.getElementById('review-content').innerHTML = empty('该日期暂无复盘报告');
+    return;
+  }
+  sel.innerHTML = runs.map((r, i) =>
+    `<option value="${r}">${r.substring(11, 16)} 第${runs.length - i}次复盘</option>`
+  ).join('');
+  sel.value = runs[0];
+  await _loadReviewByRunId(date, runs[0]);
+}
+
+async function _loadReviewByRunId(date, runId) {
+  document.getElementById('review-content').innerHTML = loading();
+  document.getElementById('review-stats').innerHTML = '';
+  const d = await api(`/api/review-report?date=${date}&run_id=${encodeURIComponent(runId)}`);
+  if (!d || !d.run_date) { document.getElementById('review-content').innerHTML = empty('该批次暂无复盘数据'); return; }
+  document.getElementById('review-date-label').textContent = _reviewDateLabel(d.run_date);
 
   const pct = (d.avg_pct_change || 0).toFixed(2);
   const sectors = Array.isArray(d.top_sectors) ? d.top_sectors : [];
-  // 直接从日期计算是否周五，不依赖数据库字段
   const isFriday = new Date(d.run_date + 'T12:00:00').getDay() === 5;
 
   document.getElementById('review-stats').innerHTML = `
-    ${statCard('上涨家数', d.market_up_count ?? '-', '今日上涨个股', '📈')}
-    ${statCard('下跌家数', d.market_down_count ?? '-', '今日下跌个股', '📉')}
-    ${statCard('平均涨跌幅', (pct >= 0 ? '+' : '') + pct + '%', '全市场平均', '📊')}
+    <div class="card card-sm"><div class="card-title">📈 上涨家数</div><div class="stat-value" style="color:var(--red)">${d.market_up_count ?? '-'}</div><div class="stat-sub">今日上涨个股</div></div>
+    <div class="card card-sm"><div class="card-title">📉 下跌家数</div><div class="stat-value" style="color:var(--green)">${d.market_down_count ?? '-'}</div><div class="stat-sub">今日下跌个股</div></div>
+    <div class="card card-sm"><div class="card-title">📊 平均涨跌幅</div><div class="stat-value" style="color:${pct >= 0 ? 'var(--red)' : 'var(--green)'}">${(pct >= 0 ? '+' : '') + pct + '%'}</div><div class="stat-sub">全市场平均</div></div>
     ${statCard('是否周五', isFriday ? '是 🎉' : '否', isFriday ? '包含周末分析' : '普通交易日', '📅')}
   `;
 
   const sectorsHtml = sectors.length ? `<div style="margin-bottom:16px">
     <div class="card-title">🔥 热门板块</div>
-    <div class="tag-list">${sectors.map(s=>`<span class="tag">${s}</span>`).join('')}</div>
+    <div class="tag-list">${sectors.map(s => {
+      const name = typeof s === 'object' ? (s['板块名称'] || JSON.stringify(s)) : s;
+      const pct  = typeof s === 'object' && s['涨跌幅(%)'] != null ? ` +${(+s['涨跌幅(%)']).toFixed(2)}%` : '';
+      return `<span class="tag">${name}${pct}</span>`;
+    }).join('')}</div>
   </div>` : '';
 
   if (typeof marked !== 'undefined' && d.markdown_content) {
@@ -1394,7 +1662,7 @@ async function loadLogs(page) {
     }
     return `<tr>
       <td>${r.run_date}</td>
-      <td><span class="badge badge-blue">${r.run_mode}</span></td>
+      <td><span class="badge badge-blue">${fmt_run_mode(r.run_mode)}</span></td>
       <td style="color:var(--text2)">${fmt_time(r.started_at)}</td>
       <td style="color:var(--text2)">${fmt_time(r.finished_at)}</td>
       <td style="color:var(--text3)">${dur}</td>
@@ -1543,6 +1811,7 @@ const NEWS_HOURS_OPTIONS_ANALYST  = [[24,'过去24小时'],[48,'过去48小时']
 function _renderScheduleConfigCard(items) {
   const get = key => items.find(c => c.key === key);
   const val = key => get(key)?.value || '';
+  const logRetention = parseInt(val('log_retention_days') || '3');
 
   const DAYS = [{v:'1',l:'周一'},{v:'2',l:'周二'},{v:'3',l:'周三'},{v:'4',l:'周四'},{v:'5',l:'周五'},{v:'6',l:'周六'},{v:'7',l:'周日'}];
   const triggerDaySet = new Set((val('schedule_trigger_days')||'').split(',').map(s=>s.trim()).filter(Boolean));
@@ -1560,8 +1829,8 @@ function _renderScheduleConfigCard(items) {
     const hourOpts  = Array.from({length:24},(_,i)=>`<option value="${i}" ${i===h?'selected':''}>${String(i).padStart(2,'0')}</option>`).join('');
     const minOpts   = [0,5,10,15,20,25,30,35,40,45,50,55].map(i=>`<option value="${i}" ${i===m?'selected':''}>${String(i).padStart(2,'0')}</option>`).join('');
     return `
-      <div style="margin-bottom:14px">
-        <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:8px">${labelText}</div>
+      <div>
+        <div style="font-size:12px;color:var(--text3);font-weight:500;margin-bottom:8px">${labelText}</div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-size:13px;color:var(--text2)">时间</span>
           <select id="sched-${id}-hour" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px">${hourOpts}</select>
@@ -1574,14 +1843,26 @@ function _renderScheduleConfigCard(items) {
   };
 
   return `<div class="card" style="max-width:640px;margin-bottom:16px">
-    <div style="font-weight:600;font-size:14px;margin-bottom:4px">⏰ 定时调度配置</div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:16px">设置每天触发分析和复盘的时间及执行日，重启 agent 容器后生效</div>
-    ${timeRow('trigger','触发+精筛','schedule_trigger_hour','schedule_trigger_minute')}
-    <div style="height:1px;background:var(--border);margin:4px 0 14px"></div>
-    ${timeRow('review','收盘复盘','schedule_review_hour','schedule_review_minute')}
-    <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
-      <button class="btn btn-green" style="font-size:13px;padding:6px 18px" onclick="saveScheduleConfig()">保存调度配置</button>
-      <span id="sched-tip" style="display:none;font-size:12px;color:var(--green)">已保存，重启 agent 生效</span>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">⏰ 定时调度配置</div>
+      <div style="font-size:12px;color:var(--text2)">设置每天触发分析和复盘的时间及执行日，保存后立即生效</div>
+    </div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      ${timeRow('trigger','触发+精筛','schedule_trigger_hour','schedule_trigger_minute')}
+    </div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      ${timeRow('review','收盘复盘','schedule_review_hour','schedule_review_minute')}
+    </div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+      <div style="font-size:12px;color:var(--text3);font-weight:500;white-space:nowrap">🗂️ 日志保留</div>
+      <select id="sched-log-retention" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:13px">
+        ${[1,2,3,5,7,14,30].map(d=>`<option value="${d}" ${d===logRetention?'selected':''}>${d} 天</option>`).join('')}
+      </select>
+      <span style="font-size:12px;color:var(--text2)">更早的日志每天凌晨 1 点自动删除</span>
+    </div>
+    <div style="padding:12px 16px;display:flex;gap:8px;align-items:center">
+      <button class="btn btn-primary btn-sm" onclick="saveScheduleConfig()">保存</button>
+      <span id="sched-tip" style="display:none;font-size:12px;color:var(--green)">已保存并生效</span>
     </div>
   </div>`;
 }
@@ -1617,7 +1898,7 @@ function _renderNewsConfigCard({id, title, desc, srcKey, hoursKey, checkedSource
         </select>
       </div>
       <div style="padding:12px 16px;display:flex;gap:8px;align-items:center">
-        <button class="btn btn-primary btn-sm" onclick="${saveFn}('${id}','${srcKey}','${hoursKey}')">保存配置</button>
+        <button class="btn btn-primary btn-sm" onclick="${saveFn}('${id}','${srcKey}','${hoursKey}')">保存</button>
         <span id="${id}-tip" style="font-size:12px;color:var(--green);display:none">已保存</span>
       </div>
     </div>`;
@@ -1629,7 +1910,7 @@ async function loadConfig() {
   const items = d.items || [];
   if (!items.length) { document.getElementById('config-list').innerHTML = empty('暂无配置项'); return; }
 
-  const SPECIAL_KEYS = new Set(['screener_news_sources','screener_news_lookback_hours','analyst_news_sources','analyst_news_lookback_hours','schedule_trigger_hour','schedule_trigger_minute','schedule_trigger_days','schedule_review_hour','schedule_review_minute','schedule_review_days']);
+  const SPECIAL_KEYS = new Set(['screener_news_sources','screener_news_lookback_hours','analyst_news_sources','analyst_news_lookback_hours','schedule_trigger_hour','schedule_trigger_minute','schedule_trigger_days','schedule_review_hour','schedule_review_minute','schedule_review_days','log_retention_days']);
   const generalItems = items.filter(c => !SPECIAL_KEYS.has(c.key));
 
   const get = key => items.find(c => c.key === key);
@@ -1668,8 +1949,9 @@ async function loadConfig() {
                 style="width:80px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);text-align:center;font-size:13px"
                 onkeydown="if(event.key==='Enter')saveConfig('${c.key}')">
             </td>
-            <td style="padding:10px 12px">
-              <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" onclick="saveConfig('${c.key}')">保存</button>
+            <td style="padding:10px 12px;white-space:nowrap">
+              <button class="btn btn-primary btn-sm" onclick="saveConfig('${c.key}')">保存</button>
+              <span id="cfg-tip-${c.key}" style="display:none;font-size:12px;color:var(--green);margin-left:6px">已保存</span>
             </td>
           </tr>`).join('')}
         </tbody>
@@ -1691,6 +1973,7 @@ async function saveScheduleConfig() {
     ['schedule_review_hour',    document.getElementById('sched-review-hour').value],
     ['schedule_review_minute',  document.getElementById('sched-review-min').value],
     ['schedule_review_days',    getCheckedDays('review')],
+    ['log_retention_days',      document.getElementById('sched-log-retention').value],
   ];
   try {
     const results = await Promise.all(pairs.map(([key, value]) =>
@@ -1729,8 +2012,8 @@ async function saveConfig(key) {
       body: JSON.stringify({value}),
     });
     if (r && r.detail) throw new Error(r.detail);
-    input.style.borderColor = 'var(--primary)';
-    setTimeout(() => input.style.borderColor = 'var(--border)', 1500);
+    const tip = document.getElementById(`cfg-tip-${key}`);
+    if (tip) { tip.style.display = 'inline'; setTimeout(() => tip.style.display = 'none', 2000); }
   } catch(e) {
     alert('保存失败: ' + e);
   }
@@ -1753,6 +2036,19 @@ function dimColor(score) {
 function fmt_time(s) {
   if (!s) return '-';
   return s.replace('T', ' ').substring(0, 16);
+}
+
+function fmt_run_mode(raw) {
+  const MAP = {
+    'full':             '触发+精筛',
+    'trigger_only':     '触发事件',
+    'review_only':      '市场复盘',
+  };
+  const SRC = { 'auto': '自动', 'manual': '手动' };
+  const [base, src] = (raw || '').split(':');
+  const label = MAP[base] || base;
+  const srcLabel = SRC[src];
+  return srcLabel ? `${label} · ${srcLabel}` : label;
 }
 
 function calcDuration(start, end) {

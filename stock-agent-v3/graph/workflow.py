@@ -70,7 +70,7 @@ def _load_daily_push_from_db(date: str = None) -> Optional[dict]:
 
 def trigger_node(state: WorkflowState) -> WorkflowState:
     """触发Agent节点"""
-    if state["run_mode"] == "review_only":
+    if state["run_mode"].split(":")[0] == "review_only":
         return {**state, "trigger_result": None}
     try:
         result = run_trigger_agent()
@@ -97,7 +97,7 @@ def screener_node(state: WorkflowState) -> WorkflowState:
 
 def review_node(state: WorkflowState) -> WorkflowState:
     """复盘Agent节点"""
-    if state["run_mode"] == "trigger_only":
+    if state["run_mode"].split(":")[0] == "trigger_only":
         return {**state, "review_result": None}
     try:
         # 优先从当前 state 取，否则从 DB 加载当日数据
@@ -122,7 +122,7 @@ def route_after_trigger(state: WorkflowState) -> Literal["screener_node", "revie
     - 有触发 → screener_node
     - 无触发 → review_node（仅复盘）
     """
-    run_mode = state.get("run_mode", "full")
+    run_mode = state.get("run_mode", "full").split(":")[0]
     if run_mode == "trigger_only":
         return "review_node"
 

@@ -247,13 +247,52 @@ def _init_prompt_if_empty(db, agent_name: str, prompt_name: str,
     logger.info(f"Prompt 已写入 DB：{agent_name}/{prompt_name} {version}")
 
 
+def _db_trigger_to_agent_format(row: dict) -> dict:
+    """将 DB triggers 行字段映射回 trigger_agent 期望格式"""
+    return {
+        "type": row.get("trigger_type", ""),
+        "summary": row.get("summary", ""),
+        "industries": row.get("industries", []),
+        "companies": row.get("companies", {}),
+        "strength": row.get("strength", ""),
+        "freshness": row.get("freshness", ""),
+        "freshness_reason": row.get("freshness_reason", ""),
+        "caution": row.get("caution", ""),
+    }
+
+
+def cmd_screener_only(date: str = None) -> None:
+    """从 DB 读取指定日期触发数据，单独重跑精筛 Agent（不重新消耗触发 token）"""
+    settings.validate()
+    from tools.db import db
+    from agents.screener_agent import run_screener_agent
+
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    rows = db.get_triggers(target_date)
+    if not rows:
+        logger.warning(f"DB 中无 {target_date} 触发数据，无法重跑精筛")
+        print(f"\n【重跑精筛失败】DB 中无 {target_date} 触发数据，请先运行触发检测。")
+        return
+
+    triggers = [_db_trigger_to_agent_format(r) for r in rows]
+    trigger_result = {
+        "date": target_date,
+        "has_triggers": True,
+        "triggers": triggers,
+    }
+    logger.info(f"从 DB 加载 {target_date} 触发数据：{len(triggers)} 条，开始重跑精筛...")
+    state = {"trigger_result": trigger_result}
+    state["screener_result"] = run_screener_agent(trigger_result)
+    _print_screener_result(state)
+
+
 def cmd_trigger_only() -> None:
     """仅运行触发检测"""
     settings.validate()
     from graph.workflow import run_workflow
 
     logger.info("启动模式：仅触发检测")
-    state = run_workflow(run_mode="trigger_only")
+    state = run_workflow(run_mode="trigger_only:manual")
     _print_trigger_result(state)
 
 
@@ -263,7 +302,7 @@ def cmd_event() -> None:
     from graph.workflow import run_workflow
 
     logger.info("启动模式：触发 + 精筛")
-    state = run_workflow(run_mode="full")
+    state = run_workflow(run_mode="full:manual")
     _print_trigger_result(state)
     _print_screener_result(state)
 
@@ -274,7 +313,7 @@ def cmd_review() -> None:
     from graph.workflow import run_workflow
 
     logger.info("启动模式：仅复盘")
-    state = run_workflow(run_mode="review_only")
+    state = run_workflow(run_mode="review_only:manual")
     _print_review_result(state)
 
 
@@ -304,7 +343,6 @@ def cmd_schedule() -> None:
     from graph.workflow import run_workflow
     from tools.db import db as _sched_db
 
-    # 从 DB 读取调度配置（支持运行时修改后重启生效）
     def _int(key, default): return int(_sched_db.get_config(key, default) or default)
     def _days(key, default):
         raw = (_sched_db.get_config(key, default) or default).strip()
@@ -320,27 +358,29 @@ def cmd_schedule() -> None:
     scheduler = BlockingScheduler(timezone="Asia/Shanghai")
 
     def job_morning():
-        logger.info(f"[定时任务] {trigger_hour:02d}:{trigger_minute:02d} 触发+精筛 启动")
-        state = run_workflow(run_mode="full")
+        logger.info(f"[定时任务] 触发+精筛 启动")
+        state = run_workflow(run_mode="full:auto")
         _print_trigger_result(state)
         _print_screener_result(state)
 
     def job_review():
-        logger.info(f"[定时任务] {review_hour:02d}:{review_minute:02d} 复盘 启动")
-        state = run_workflow(run_mode="review_only")
+        logger.info(f"[定时任务] 复盘 启动")
+        state = run_workflow(run_mode="review_only:auto")
         _print_review_result(state)
 
     scheduler.add_job(
         job_morning, "cron",
         hour=trigger_hour, minute=trigger_minute,
         day_of_week=trigger_days,
-        id="morning_job", name=f"触发+精筛（{trigger_hour:02d}:{trigger_minute:02d} 周{trigger_days or '每天'}）"
+        id="morning_job",
+        name=f"触发+精筛（{trigger_hour:02d}:{trigger_minute:02d} 周{trigger_days or '每天'}）"
     )
     scheduler.add_job(
         job_review, "cron",
         hour=review_hour, minute=review_minute,
         day_of_week=review_days,
-        id="review_job", name=f"每日复盘（{review_hour:02d}:{review_minute:02d} 周{review_days or '每天'}）"
+        id="review_job",
+        name=f"每日复盘（{review_hour:02d}:{review_minute:02d} 周{review_days or '每天'}）"
     )
 
     # 新闻采集：单一 job，时段/间隔过滤由 is_source_due() 内部处理
@@ -393,10 +433,12 @@ v1.3 新增：SQLite 存储层 | Prompt 版本管理 | --init-db 初始化命令
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--init-db", action="store_true", help="初始化数据库并写入初始 Prompt")
     group.add_argument("--trigger-only", action="store_true", help="仅运行触发检测")
+    group.add_argument("--screener-only", action="store_true", help="从 DB 读取触发数据，单独重跑精筛（可配合 --screener-date 指定日期）")
     group.add_argument("--event", action="store_true", help="触发 + 精筛")
     group.add_argument("--review", action="store_true", help="仅收盘复盘")
     group.add_argument("--collect", action="store_true", help="执行一次新闻采集")
     group.add_argument("--schedule", action="store_true", help="启动APScheduler定时任务")
+    parser.add_argument("--screener-date", metavar="YYYY-MM-DD", help="--screener-only 使用的触发数据日期，默认当天")
 
     args = parser.parse_args()
 
@@ -404,6 +446,8 @@ v1.3 新增：SQLite 存储层 | Prompt 版本管理 | --init-db 初始化命令
         cmd_init_db()
     elif args.trigger_only:
         cmd_trigger_only()
+    elif args.screener_only:
+        cmd_screener_only(date=args.screener_date)
     elif args.event:
         cmd_event()
     elif args.review:

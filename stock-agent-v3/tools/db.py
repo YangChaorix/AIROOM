@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS run_logs (
 CREATE TABLE IF NOT EXISTS triggers (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     run_date         TEXT NOT NULL,
+    run_id           TEXT NOT NULL DEFAULT '',
     trigger_index    INTEGER,
     trigger_type     TEXT,
     summary          TEXT,
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS screener_stocks (
     total_score    INTEGER,
     recommendation TEXT,
     risk           TEXT,
+    trigger_index  INTEGER,
     created_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_screener_date ON screener_stocks(run_date);
@@ -67,7 +69,8 @@ CREATE INDEX IF NOT EXISTS idx_screener_code ON screener_stocks(stock_code);
 
 CREATE TABLE IF NOT EXISTS review_reports (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_date          TEXT NOT NULL UNIQUE,
+    run_date          TEXT NOT NULL,
+    run_id            TEXT NOT NULL DEFAULT '',
     markdown_content  TEXT,
     market_up_count   INTEGER,
     market_down_count INTEGER,
@@ -157,6 +160,7 @@ _DEFAULT_CONFIGS = [
     ("schedule_review_hour",         "15", "number", "复盘执行小时",           "每天复盘的小时（0-23，北京时间）"),
     ("schedule_review_minute",       "35", "number", "复盘执行分钟",           "每天复盘的分钟（0-59）"),
     ("schedule_review_days",         "1,2,3,4,5", "text", "复盘执行日",        "周几执行，逗号分隔：1=周一…7=周日；空=每天"),
+    ("log_retention_days",           "3",          "number", "日志保留天数",    "自动清理超出天数的日志文件，0=不清理"),
 ]
 
 
@@ -200,6 +204,52 @@ class StockAgentDB:
             if "source" not in cols:
                 conn.execute("ALTER TABLE event_history ADD COLUMN source TEXT")
                 conn.commit()
+            # 迁移：screener_stocks 加 trigger_index 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(screener_stocks)").fetchall()]
+            if "trigger_index" not in cols:
+                conn.execute("ALTER TABLE screener_stocks ADD COLUMN trigger_index INTEGER")
+                conn.commit()
+            # 迁移：review_reports 去掉 run_date UNIQUE 约束，加 run_id 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(review_reports)").fetchall()]
+            if "run_id" not in cols:
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS review_reports_new (
+                        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                        run_date          TEXT NOT NULL,
+                        run_id            TEXT NOT NULL DEFAULT '',
+                        markdown_content  TEXT,
+                        market_up_count   INTEGER,
+                        market_down_count INTEGER,
+                        avg_pct_change    REAL,
+                        market_sentiment  TEXT,
+                        top_sectors       TEXT,
+                        is_friday         INTEGER,
+                        created_at        TEXT NOT NULL
+                    );
+                    INSERT INTO review_reports_new
+                        SELECT id, run_date, COALESCE(created_at,''), markdown_content,
+                               market_up_count, market_down_count, avg_pct_change,
+                               market_sentiment, top_sectors, is_friday, created_at
+                        FROM review_reports;
+                    DROP TABLE review_reports;
+                    ALTER TABLE review_reports_new RENAME TO review_reports;
+                    CREATE INDEX IF NOT EXISTS idx_review_run ON review_reports(run_date, run_id);
+                """)
+            # 迁移：triggers 加 run_id 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(triggers)").fetchall()]
+            if "run_id" not in cols:
+                conn.execute("ALTER TABLE triggers ADD COLUMN run_id TEXT NOT NULL DEFAULT ''")
+                # 回填：用 created_at 作为旧数据的 run_id（按 run_date 分组，同一天同一批）
+                conn.execute("""
+                    UPDATE triggers SET run_id = (
+                        SELECT MIN(created_at) FROM triggers t2 WHERE t2.run_date = triggers.run_date
+                    ) WHERE run_id = ''
+                """)
+                conn.commit()
+            # 迁移完成后确保 run_id 相关索引存在（DDL 中已移除，这里统一创建）
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_triggers_run ON triggers(run_date, run_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_review_run ON review_reports(run_date, run_id)")
+            conn.commit()
             # 迁移：stock_analysis 加 names / scores_summary 列
             cols = [r[1] for r in conn.execute("PRAGMA table_info(stock_analysis)").fetchall()]
             if "names" not in cols:
@@ -295,18 +345,18 @@ class StockAgentDB:
     # ── triggers ──────────────────────────────────────────────────────────────
 
     def save_triggers(self, run_date: str, triggers: list) -> None:
-        """保存当日触发信号（覆盖写）"""
+        """保存当日触发信号（追加写，每次生成新 run_id）"""
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        run_id = created_at  # 同一批次共用同一个时间戳
         with self.get_conn() as conn:
-            conn.execute("DELETE FROM triggers WHERE run_date=?", (run_date,))
             for i, t in enumerate(triggers):
                 conn.execute(
                     """INSERT INTO triggers
-                       (run_date, trigger_index, trigger_type, summary, industries,
+                       (run_date, run_id, trigger_index, trigger_type, summary, industries,
                         companies, strength, freshness, freshness_reason, caution, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        run_date, i + 1,
+                        run_date, run_id, i + 1,
                         t.get("type", ""),
                         t.get("summary", ""),
                         json.dumps(t.get("industries", []), ensure_ascii=False),
@@ -318,15 +368,36 @@ class StockAgentDB:
                         created_at,
                     ),
                 )
-        logger.debug(f"save_triggers: {run_date} 写入 {len(triggers)} 条")
+        logger.debug(f"save_triggers: {run_date} run_id={run_id} 写入 {len(triggers)} 条")
 
-    def get_triggers(self, run_date: str) -> list:
-        """读取某日触发信号"""
+    def get_trigger_run_ids(self, run_date: str) -> list:
+        """返回某日所有触发批次 run_id，按时间倒序"""
         with self.get_conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM triggers WHERE run_date=? ORDER BY trigger_index",
+                "SELECT DISTINCT run_id FROM triggers WHERE run_date=? ORDER BY run_id DESC",
                 (run_date,),
             ).fetchall()
+        return [r[0] for r in rows if r[0]]
+
+    def get_triggers(self, run_date: str, run_id: str = None) -> list:
+        """读取某日触发信号；run_id 为空则返回最新批次"""
+        with self.get_conn() as conn:
+            if run_id:
+                rows = conn.execute(
+                    "SELECT * FROM triggers WHERE run_date=? AND run_id=? ORDER BY trigger_index",
+                    (run_date, run_id),
+                ).fetchall()
+            else:
+                latest = conn.execute(
+                    "SELECT run_id FROM triggers WHERE run_date=? ORDER BY run_id DESC LIMIT 1",
+                    (run_date,),
+                ).fetchone()
+                if not latest:
+                    return []
+                rows = conn.execute(
+                    "SELECT * FROM triggers WHERE run_date=? AND run_id=? ORDER BY trigger_index",
+                    (run_date, latest[0]),
+                ).fetchall()
         result = []
         for row in rows:
             r = dict(row)
@@ -357,8 +428,8 @@ class StockAgentDB:
                         d1_score, d1_reason, d2_score, d2_reason,
                         d3_score, d3_reason, d4_score, d4_reason,
                         d5_score, d5_reason, d6_score, d6_reason,
-                        total_score, recommendation, risk, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        total_score, recommendation, risk, trigger_index, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         run_date,
                         run_id,
@@ -375,6 +446,7 @@ class StockAgentDB:
                         stock.get("total_score"),
                         stock.get("recommendation", ""),
                         stock.get("risk", ""),
+                        stock.get("trigger_index"),
                         created_at,
                     ),
                 )
@@ -427,18 +499,19 @@ class StockAgentDB:
     # ── review_reports ────────────────────────────────────────────────────────
 
     def save_review(self, run_date: str, review_result: dict) -> None:
-        """保存复盘报告（按 run_date 唯一）"""
+        """保存复盘报告（追加写，每次生成新 run_id）"""
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        run_id = created_at
         ov = review_result.get("market_overview", {})
         top_sectors = review_result.get("top_sectors", [])
         with self.get_conn() as conn:
             conn.execute(
-                """INSERT OR REPLACE INTO review_reports
-                   (run_date, markdown_content, market_up_count, market_down_count,
+                """INSERT INTO review_reports
+                   (run_date, run_id, markdown_content, market_up_count, market_down_count,
                     avg_pct_change, market_sentiment, top_sectors, is_friday, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    run_date,
+                    run_date, run_id,
                     review_result.get("review_markdown", ""),
                     ov.get("上涨家数"),
                     ov.get("下跌家数"),
@@ -449,14 +522,30 @@ class StockAgentDB:
                     created_at,
                 ),
             )
-        logger.debug(f"save_review: {run_date} 复盘报告已保存")
+        logger.debug(f"save_review: {run_date} run_id={run_id} 复盘报告已保存")
 
-    def get_review(self, run_date: str) -> dict:
-        """读取某日复盘报告"""
+    def get_review_run_ids(self, run_date: str) -> list:
+        """返回某日所有复盘批次 run_id，按时间倒序"""
         with self.get_conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM review_reports WHERE run_date=?", (run_date,)
-            ).fetchone()
+            rows = conn.execute(
+                "SELECT DISTINCT run_id FROM review_reports WHERE run_date=? ORDER BY run_id DESC",
+                (run_date,),
+            ).fetchall()
+        return [r[0] for r in rows if r[0]]
+
+    def get_review(self, run_date: str, run_id: str = None) -> dict:
+        """读取某日复盘报告；run_id 为空则返回最新批次"""
+        with self.get_conn() as conn:
+            if run_id:
+                row = conn.execute(
+                    "SELECT * FROM review_reports WHERE run_date=? AND run_id=?",
+                    (run_date, run_id),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM review_reports WHERE run_date=? ORDER BY run_id DESC LIMIT 1",
+                    (run_date,),
+                ).fetchone()
         if row is None:
             return {}
         r = dict(row)

@@ -1,9 +1,11 @@
 services:
 
-  # ── Web Dashboard ──────────────────────────────────────────────────────────
+  # ── Web Dashboard + 内嵌调度器 ─────────────────────────────────────────────
   web:
     image: stock-agent-v3:latest
     command: python web_server.py
+    env_file:
+      - .env
     environment:
       - TZ=Asia/Shanghai
     ports:
@@ -21,21 +23,3 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-
-
-  # ── Scheduler（定时触发 + 采集） ────────────────────────────────────────────
-  agent:
-    image: stock-agent-v3:latest
-    command: python main.py --schedule
-    environment:
-      - TZ=Asia/Shanghai
-    volumes:
-      - ./data:/app/data          # 与 web 共享同一 DB
-      - ./logs:/app/logs
-      - ./.env:/app/.env:ro
-      - ./config/models.json:/app/config/models.json:ro
-      - /etc/localtime:/etc/localtime:ro
-    restart: unless-stopped
-    depends_on:
-      web:
-        condition: service_healthy

@@ -6,7 +6,7 @@ import os
 import threading
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import hmac
@@ -16,6 +16,8 @@ from fastapi import FastAPI, Query, HTTPException, Body, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+
+from apscheduler.schedulers.background import BackgroundScheduler
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "db", "stock_agent.db")
@@ -72,21 +74,181 @@ def _check_auth(request: Request):
 
 AUTH = Depends(_check_auth)
 
+# ── Scheduler ─────────────────────────────────────────────────────────────────
+_scheduler: BackgroundScheduler = None
+
+SCHEDULE_KEYS = {
+    "schedule_trigger_hour", "schedule_trigger_minute", "schedule_trigger_days",
+    "schedule_review_hour",  "schedule_review_minute",  "schedule_review_days",
+}
+
+
+def _get_schedule_cfg() -> dict:
+    def _int(key, default): return int(agent_db.get_config(key, default) or default)
+    def _days(key, default):
+        raw = (agent_db.get_config(key, default) or default).strip()
+        return raw if raw else None
+    return {
+        "trigger_hour":   _int("schedule_trigger_hour",   9),
+        "trigger_minute": _int("schedule_trigger_minute", 15),
+        "trigger_days":   _days("schedule_trigger_days",  "1,2,3,4,5"),
+        "review_hour":    _int("schedule_review_hour",    15),
+        "review_minute":  _int("schedule_review_minute",  35),
+        "review_days":    _days("schedule_review_days",   "1,2,3,4,5"),
+    }
+
+
+def _build_scheduler() -> BackgroundScheduler:
+    from config.settings import settings
+    from graph.workflow import run_workflow
+    from tools.news_collector import collect_all_due_sources
+
+    cfg = _get_schedule_cfg()
+    sched = BackgroundScheduler(timezone="Asia/Shanghai")
+
+    def job_morning():
+        logger.info("[定时任务] 触发+精筛 启动")
+        try:
+            state = run_workflow(run_mode="full:auto")
+            logger.info(f"[定时任务] 触发+精筛 完成，触发数: {len((state.get('trigger_result') or {}).get('triggers', []))}")
+        except Exception as e:
+            logger.error(f"[定时任务] 触发+精筛 异常: {e}", exc_info=True)
+
+    def job_review():
+        logger.info("[定时任务] 复盘 启动")
+        try:
+            run_workflow(run_mode="review_only:auto")
+            logger.info("[定时任务] 复盘 完成")
+        except Exception as e:
+            logger.error(f"[定时任务] 复盘 异常: {e}", exc_info=True)
+
+    def job_clean_logs():
+        try:
+            retention = int(agent_db.get_config("log_retention_days", 3) or 3)
+            if retention <= 0:
+                return
+            log_dir = os.path.join(BASE_DIR, "logs")
+            if not os.path.isdir(log_dir):
+                return
+            cutoff = datetime.now().date() - timedelta(days=retention)
+            removed = []
+            for fname in os.listdir(log_dir):
+                if not fname.endswith(".log"):
+                    continue
+                stem = fname[:-4]  # e.g. "2026-03-25"
+                try:
+                    fdate = datetime.strptime(stem, "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                if fdate < cutoff:
+                    fpath = os.path.join(log_dir, fname)
+                    os.remove(fpath)
+                    removed.append(fname)
+            if removed:
+                logger.info(f"[定时任务] 日志清理 删除 {len(removed)} 个文件: {removed}")
+        except Exception as e:
+            logger.error(f"[定时任务] 日志清理 异常: {e}", exc_info=True)
+
+    def job_collect():
+        logger.info("[定时任务] 新闻采集 启动")
+        try:
+            result = collect_all_due_sources()
+            logger.info(f"[定时任务] 新闻采集 完成: {result}")
+        except Exception as e:
+            logger.error(f"[定时任务] 新闻采集 异常: {e}", exc_info=True)
+
+    schedule_hours = settings.agent.collect_schedule_hours
+    schedule_interval = settings.agent.collect_schedule_interval
+
+    sched.add_job(
+        job_morning, "cron",
+        hour=cfg["trigger_hour"], minute=cfg["trigger_minute"],
+        day_of_week=cfg["trigger_days"],
+        id="morning_job",
+        name=f"触发+精筛（{cfg['trigger_hour']:02d}:{cfg['trigger_minute']:02d} 周{cfg['trigger_days'] or '每天'}）",
+    )
+    sched.add_job(
+        job_review, "cron",
+        hour=cfg["review_hour"], minute=cfg["review_minute"],
+        day_of_week=cfg["review_days"],
+        id="review_job",
+        name=f"每日复盘（{cfg['review_hour']:02d}:{cfg['review_minute']:02d} 周{cfg['review_days'] or '每天'}）",
+    )
+    sched.add_job(
+        job_collect, "cron",
+        hour=schedule_hours,
+        minute=f"*/{schedule_interval}",
+        id="collect_job",
+        name=f"新闻采集（{schedule_hours}点，每{schedule_interval}分钟）",
+    )
+    sched.add_job(
+        job_clean_logs, "cron",
+        hour=1, minute=0,
+        id="clean_logs_job",
+        name="日志清理（每天凌晨1点）",
+    )
+
+    logger.info(
+        f"[调度器] jobs 已注册 — morning_job: {cfg['trigger_hour']:02d}:{cfg['trigger_minute']:02d} 周{cfg['trigger_days'] or '每天'}"
+        f" | review_job: {cfg['review_hour']:02d}:{cfg['review_minute']:02d} 周{cfg['review_days'] or '每天'}"
+        f" | collect_job: {schedule_hours}点 每{schedule_interval}min | clean_logs_job: 01:00每天"
+    )
+    return sched
+
+
+def _reschedule_jobs(sched: BackgroundScheduler) -> None:
+    cfg = _get_schedule_cfg()
+    sched.reschedule_job(
+        "morning_job", trigger="cron",
+        hour=cfg["trigger_hour"], minute=cfg["trigger_minute"],
+        day_of_week=cfg["trigger_days"],
+    )
+    sched.reschedule_job(
+        "review_job", trigger="cron",
+        hour=cfg["review_hour"], minute=cfg["review_minute"],
+        day_of_week=cfg["review_days"],
+    )
+    logger.info(
+        f"[热更新] morning_job → {cfg['trigger_hour']:02d}:{cfg['trigger_minute']:02d} 周{cfg['trigger_days'] or '每天'}"
+        f" | review_job → {cfg['review_hour']:02d}:{cfg['review_minute']:02d} 周{cfg['review_days'] or '每天'}"
+    )
+
+
 # ── Manual Run State ──────────────────────────────────────────────────────────
 _run_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
 _collect_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
+_review_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
+_screener_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
 
 
 @asynccontextmanager
 async def lifespan(app):
-    """启动时清理上次异常退出留下的 running 状态"""
+    global _scheduler
+    # 确保 DB schema 最新（执行所有迁移），合并部署后 main.py 不再单独运行时也能迁移
+    try:
+        agent_db.init_db()
+        logger.info(f"[DB] init_db 完成: {agent_db.db_path}")
+    except Exception as e:
+        logger.error(f"[DB] init_db 失败: {e}", exc_info=True)
+    # 清理上次异常退出留下的 running 状态
     if os.path.exists(DB_PATH):
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute(
                 "UPDATE run_logs SET status='interrupted', finished_at=? WHERE status='running'",
                 (datetime.now().isoformat(timespec="seconds"),),
             )
+    # 启动内嵌调度器
+    try:
+        _scheduler = _build_scheduler()
+        _scheduler.start()
+        logger.info("[调度器] BackgroundScheduler 已启动")
+    except Exception as e:
+        logger.error(f"[调度器] 启动失败（不影响 Web 服务）: {e}", exc_info=True)
+        _scheduler = None
     yield
+    if _scheduler:
+        _scheduler.shutdown(wait=False)
+        logger.info("[调度器] 已停止")
 
 
 app = FastAPI(title="Stock Agent Dashboard", version="1.0.0", lifespan=lifespan)
@@ -252,12 +414,24 @@ def api_run_logs(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge
 
 
 # ── Triggers ──────────────────────────────────────────────────────────────────
+@app.get("/api/triggers/runs", dependencies=[AUTH])
+def api_trigger_runs(date: Optional[str] = Query(None)):
+    if not date:
+        raise HTTPException(400, "date is required")
+    return {"runs": agent_db.get_trigger_run_ids(date)}
+
+
 @app.get("/api/triggers", dependencies=[AUTH])
-def api_triggers(date: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=500)):
+def api_triggers(
+    date: Optional[str] = Query(None),
+    run_id: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
     if date:
-        rows = query_db("SELECT * FROM triggers WHERE run_date=? ORDER BY trigger_index", (date,))
-    else:
-        rows = query_db("SELECT * FROM triggers ORDER BY run_date DESC, trigger_index LIMIT ?", (limit,))
+        rows_raw = agent_db.get_triggers(date, run_id=run_id)
+        # get_triggers already parses JSON fields; wrap to match query_db format
+        return {"items": rows_raw}
+    rows = query_db("SELECT * FROM triggers ORDER BY run_date DESC, run_id DESC, trigger_index LIMIT ?", (limit,))
     return {"items": rows}
 
 
@@ -303,20 +477,72 @@ def api_screener_stocks(
     return {"items": rows, "run_id": run_id}
 
 
+@app.get("/api/screener-stocks/with-triggers", dependencies=[AUTH])
+def api_screener_with_triggers(
+    date: Optional[str] = Query(None),
+    run_id: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """精选股票 LEFT JOIN 触发事件，返回含触发摘要的完整数据"""
+    if not date:
+        raise HTTPException(400, "date is required")
+
+    if not run_id:
+        latest = query_db(
+            "SELECT run_id FROM screener_stocks WHERE run_date=? ORDER BY run_id DESC LIMIT 1",
+            (date,), fetchall=False,
+        )
+        if not latest:
+            return {"items": [], "run_id": None}
+        run_id = latest["run_id"]
+
+    rows = query_db(
+        """SELECT s.*,
+                  t.summary      AS trig_summary,
+                  t.trigger_type AS trig_type,
+                  t.industries   AS trig_industries,
+                  t.strength     AS trig_strength,
+                  t.freshness    AS trig_freshness
+           FROM screener_stocks s
+           LEFT JOIN triggers t
+             ON s.run_date = t.run_date AND s.trigger_index = t.trigger_index
+           WHERE s.run_date = ? AND s.run_id = ?
+           ORDER BY s.rank
+           LIMIT ?""",
+        (date, run_id, limit),
+    )
+    return {"items": rows, "run_id": run_id}
+
+
 # ── Review ────────────────────────────────────────────────────────────────────
+@app.get("/api/review-reports/runs", dependencies=[AUTH])
+def api_review_runs(date: Optional[str] = Query(None)):
+    if not date:
+        raise HTTPException(400, "date is required")
+    return {"runs": agent_db.get_review_run_ids(date)}
+
+
 @app.get("/api/review-report", dependencies=[AUTH])
-def api_review_report(date: Optional[str] = Query(None)):
+def api_review_report(date: Optional[str] = Query(None), run_id: Optional[str] = Query(None)):
     if date:
-        return query_db("SELECT * FROM review_reports WHERE run_date=?", (date,), fetchall=False) or {}
-    return query_db("SELECT * FROM review_reports ORDER BY run_date DESC LIMIT 1", fetchall=False) or {}
+        row = agent_db.get_review(date, run_id=run_id)
+        return row or {}
+    # 不传 date：取全局最新
+    row = query_db("SELECT * FROM review_reports ORDER BY run_date DESC, run_id DESC LIMIT 1", fetchall=False)
+    if row:
+        row = agent_db.get_review(row["run_date"])
+    return row or {}
 
 
 @app.get("/api/review-reports", dependencies=[AUTH])
 def api_review_reports(limit: int = Query(30, ge=1, le=100)):
+    # 返回每日最新批次（去重），用于日期选择器
     rows = query_db("""
-        SELECT id, run_date, market_up_count, market_down_count,
-               avg_pct_change, market_sentiment, top_sectors, is_friday, created_at
-        FROM review_reports ORDER BY run_date DESC LIMIT ?
+        SELECT run_date, MAX(run_id) as run_id, market_up_count, market_down_count,
+               avg_pct_change, market_sentiment, top_sectors, is_friday, MAX(created_at) as created_at
+        FROM review_reports
+        GROUP BY run_date
+        ORDER BY run_date DESC LIMIT ?
     """, (limit,))
     return {"items": rows}
 
@@ -431,6 +657,12 @@ def api_set_config(key: str, payload: dict = Body(...)):
     ok = agent_db.set_config(key, str(value))
     if not ok:
         raise HTTPException(404, f"Config key '{key}' not found")
+    # 调度配置热更新：立即生效，无需重启
+    if key in SCHEDULE_KEYS and _scheduler:
+        try:
+            _reschedule_jobs(_scheduler)
+        except Exception as e:
+            logger.warning(f"[热更新] reschedule 失败: {e}")
     return {"key": key, "value": str(value)}
 
 
@@ -470,7 +702,7 @@ def api_get_analysis(analysis_id: int):
 
 
 # ── Manual Run ────────────────────────────────────────────────────────────────
-def _do_run():
+def _do_run(mode: str = "full"):
     _run_state["running"] = True
     _run_state["started_at"] = datetime.now().isoformat(timespec="seconds")
     _run_state["finished_at"] = None
@@ -478,8 +710,9 @@ def _do_run():
     _run_state["status"] = "running"
     try:
         main_py = os.path.join(BASE_DIR, "main.py")
+        cmd_flag = "--trigger-only" if mode == "trigger_only" else "--event"
         result = subprocess.run(
-            [sys.executable, main_py, "--event"],
+            [sys.executable, main_py, cmd_flag],
             capture_output=True, text=True, cwd=BASE_DIR
         )
         if result.returncode == 0:
@@ -496,10 +729,16 @@ def _do_run():
 
 
 @app.post("/api/run/trigger", dependencies=[AUTH])
-def api_run_trigger():
+def api_run_trigger(body: dict = Body({})):
     if _run_state["running"]:
         raise HTTPException(status_code=409, detail="Analysis already running")
-    t = threading.Thread(target=_do_run, daemon=True)
+    mode = body.get("mode", "full")
+    _run_state["running"] = True
+    _run_state["status"] = "running"
+    _run_state["error"] = None
+    _run_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+    _run_state["finished_at"] = None
+    t = threading.Thread(target=_do_run, kwargs={"mode": mode}, daemon=True)
     t.start()
     return {"message": "Analysis started", "started_at": _run_state["started_at"]}
 
@@ -507,6 +746,92 @@ def api_run_trigger():
 @app.get("/api/run/status", dependencies=[AUTH])
 def api_run_status():
     return dict(_run_state)
+
+
+def _do_review():
+    _review_state["running"] = True
+    _review_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+    _review_state["finished_at"] = None
+    _review_state["error"] = None
+    _review_state["status"] = "running"
+    try:
+        main_py = os.path.join(BASE_DIR, "main.py")
+        result = subprocess.run(
+            [sys.executable, main_py, "--review"],
+            capture_output=True, text=True, cwd=BASE_DIR
+        )
+        if result.returncode == 0:
+            _review_state["status"] = "success"
+        else:
+            _review_state["status"] = "error"
+            _review_state["error"] = (result.stderr or result.stdout or "Unknown error")[-500:]
+    except Exception as e:
+        _review_state["status"] = "error"
+        _review_state["error"] = str(e)
+    finally:
+        _review_state["running"] = False
+        _review_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
+
+
+@app.post("/api/run/review", dependencies=[AUTH])
+def api_run_review():
+    if _review_state["running"]:
+        raise HTTPException(status_code=409, detail="Review already running")
+    _review_state["running"] = True
+    _review_state["status"] = "running"
+    _review_state["error"] = None
+    _review_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+    _review_state["finished_at"] = None
+    t = threading.Thread(target=_do_review, daemon=True)
+    t.start()
+    return {"message": "Review started", "started_at": _review_state["started_at"]}
+
+
+@app.get("/api/run/review/status", dependencies=[AUTH])
+def api_run_review_status():
+    return dict(_review_state)
+
+
+def _do_screener(date: str = None):
+    _screener_state["running"] = True
+    _screener_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+    _screener_state["finished_at"] = None
+    _screener_state["error"] = None
+    _screener_state["status"] = "running"
+    try:
+        main_py = os.path.join(BASE_DIR, "main.py")
+        cmd = [sys.executable, main_py, "--screener-only"]
+        if date:
+            cmd += ["--screener-date", date]
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=BASE_DIR)
+        if result.returncode == 0:
+            _screener_state["status"] = "success"
+        else:
+            _screener_state["status"] = "error"
+            _screener_state["error"] = (result.stderr or result.stdout or "Unknown error")[-500:]
+    except Exception as e:
+        _screener_state["status"] = "error"
+        _screener_state["error"] = str(e)
+    finally:
+        _screener_state["running"] = False
+        _screener_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
+
+
+@app.post("/api/run/screener", dependencies=[AUTH])
+def api_run_screener(body: dict = Body({})):
+    if _screener_state["running"]:
+        raise HTTPException(status_code=409, detail="Screener already running")
+    if _run_state["running"]:
+        raise HTTPException(status_code=409, detail="Analysis already running")
+    date = (body.get("date") or "").strip() or None
+    t = threading.Thread(target=_do_screener, kwargs={"date": date}, daemon=True)
+    t.start()
+    return {"message": "Screener started", "started_at": _screener_state["started_at"]}
+
+
+@app.get("/api/run/screener/status", dependencies=[AUTH])
+def api_run_screener_status():
+    return dict(_screener_state)
 
 
 def _do_collect():
@@ -538,6 +863,11 @@ def _do_collect():
 def api_news_collect():
     if _collect_state["running"]:
         raise HTTPException(status_code=409, detail="News collection already running")
+    _collect_state["running"] = True
+    _collect_state["status"] = "running"
+    _collect_state["error"] = None
+    _collect_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+    _collect_state["finished_at"] = None
     t = threading.Thread(target=_do_collect, daemon=True)
     t.start()
     return {"message": "News collection started", "started_at": _collect_state["started_at"]}

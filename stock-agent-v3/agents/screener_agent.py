@@ -185,10 +185,10 @@ def _collect_company_data(company_name: str, stock_code: str) -> dict:
 
 
 def _extract_companies_from_triggers(trigger_result: dict) -> list[dict]:
-    """从触发Agent结果中提取企业列表（含股票代码）"""
+    """从触发Agent结果中提取企业列表（含股票代码和触发索引）"""
     companies = []
     seen = set()
-    for trigger in trigger_result.get("triggers", []):
+    for trigger_idx, trigger in enumerate(trigger_result.get("triggers", []), 1):
         for category, company_list in trigger.get("companies", {}).items():
             for company in company_list:
                 if isinstance(company, dict):
@@ -211,6 +211,7 @@ def _extract_companies_from_triggers(trigger_result: dict) -> list[dict]:
                             "code": code,
                             "trigger_type": trigger.get("type", ""),
                             "industry": ", ".join(trigger.get("industries", [])),
+                            "trigger_index": trigger_idx,
                         }
                     )
     return companies
@@ -313,6 +314,7 @@ def run_screener_agent(trigger_result: dict) -> dict:
             data = _collect_company_data(company["name"], company["code"])
             data["trigger_type"] = company.get("trigger_type", "")
             data["industry"] = company.get("industry", "")
+            data["trigger_index"] = company.get("trigger_index")
             company_data_list.append(data)
         else:
             company_data_list.append(company)
@@ -393,6 +395,17 @@ def run_screener_agent(trigger_result: dict) -> dict:
                 seen_codes.add(code)
                 deduped.append(item)
     all_items = deduped
+
+    # 回填 trigger_index：从 company_data_list 构建 code → trigger_index 映射
+    code_to_trigger_index = {
+        c.get("代码", c.get("code", "")): c.get("trigger_index")
+        for c in company_data_list
+        if c.get("trigger_index") is not None
+    }
+    for item in all_items:
+        code = item.get("code", "")
+        if code and code in code_to_trigger_index:
+            item["trigger_index"] = code_to_trigger_index[code]
     batch_summary = "+".join(str(len(b)) for b in all_raw_batches)
     result = {
         "date": today,
