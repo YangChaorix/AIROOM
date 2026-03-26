@@ -515,7 +515,7 @@ class StockAgentDB:
                     review_result.get("review_markdown", ""),
                     ov.get("上涨家数"),
                     ov.get("下跌家数"),
-                    ov.get("平均涨跌幅(%)"),
+                    ov.get("涨跌比(%)"),
                     ov.get("市场情绪", ""),
                     json.dumps(top_sectors, ensure_ascii=False, default=str),
                     1 if review_result.get("is_friday") else 0,

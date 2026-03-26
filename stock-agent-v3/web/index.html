@@ -1143,7 +1143,7 @@ async function loadDashboard() {
         <div style="display:flex;gap:24px;flex-wrap:wrap">
           <div><div style="font-size:11px;color:var(--text2)">上涨家数</div><div style="font-size:20px;font-weight:700;color:var(--red)">${lr.up ?? '-'}</div></div>
           <div><div style="font-size:11px;color:var(--text2)">下跌家数</div><div style="font-size:20px;font-weight:700;color:var(--green)">${lr.down ?? '-'}</div></div>
-          <div><div style="font-size:11px;color:var(--text2)">平均涨跌幅</div><div style="font-size:20px;font-weight:700;color:${pct>=0?'var(--red)':'var(--green)'}">${pct}%</div></div>
+          <div><div style="font-size:11px;color:var(--text2)">涨跌比</div><div style="font-size:20px;font-weight:700;color:${pct>=0?'var(--red)':'var(--green)'}">${pct}%</div></div>
           <div style="flex:1;min-width:200px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">市场情绪</div><div style="font-size:13px;color:var(--text);line-height:1.5">${lr.sentiment || '-'}</div></div>
         </div>
       </div>
@@ -1508,6 +1508,31 @@ async function loadReview(date) {
   if (!date) date = S.reviewDate || S.date;
   if (!date) { document.getElementById('review-content').innerHTML = empty('暂无复盘数据'); return; }
   S.reviewDate = date;
+  // 检查是否有复盘正在运行，若是则禁用按钮并开始轮询
+  const btn = document.getElementById('btn-review');
+  try {
+    const s = await api('/api/run/review/status');
+    if (s.running) {
+      btn.disabled = true;
+      btn.textContent = '运行中…';
+      if (!_reviewPollTimer) {
+        _reviewPollTimer = setInterval(async () => {
+          const s2 = await api('/api/run/review/status');
+          if (!s2.running) {
+            clearInterval(_reviewPollTimer);
+            _reviewPollTimer = null;
+            btn.disabled = false;
+            btn.textContent = '触发复盘';
+            if (s2.status === 'success') { await loadDates(); loadReview(S.reviewDate); }
+            else alert('复盘失败：' + (s2.error || '未知错误'));
+          }
+        }, 3000);
+      }
+    } else {
+      btn.disabled = false;
+      btn.textContent = '触发复盘';
+    }
+  } catch(e) { /* 状态查询失败不影响页面加载 */ }
   const dsel = document.getElementById('review-date-sel');
   if (dsel && dsel.value !== date) dsel.value = date;
   document.getElementById('review-content').innerHTML = loading();
@@ -1543,7 +1568,7 @@ async function _loadReviewByRunId(date, runId) {
   document.getElementById('review-stats').innerHTML = `
     <div class="card card-sm"><div class="card-title">📈 上涨家数</div><div class="stat-value" style="color:var(--red)">${d.market_up_count ?? '-'}</div><div class="stat-sub">今日上涨个股</div></div>
     <div class="card card-sm"><div class="card-title">📉 下跌家数</div><div class="stat-value" style="color:var(--green)">${d.market_down_count ?? '-'}</div><div class="stat-sub">今日下跌个股</div></div>
-    <div class="card card-sm"><div class="card-title">📊 平均涨跌幅</div><div class="stat-value" style="color:${pct >= 0 ? 'var(--red)' : 'var(--green)'}">${(pct >= 0 ? '+' : '') + pct + '%'}</div><div class="stat-sub">全市场平均</div></div>
+    <div class="card card-sm"><div class="card-title">📊 涨跌比</div><div class="stat-value" style="color:${pct >= 0 ? 'var(--red)' : 'var(--green)'}">${(pct >= 0 ? '+' : '') + pct + '%'}</div><div class="stat-sub">全市场涨跌比</div></div>
     ${statCard('是否周五', isFriday ? '是 🎉' : '否', isFriday ? '包含周末分析' : '普通交易日', '📅')}
   `;
 

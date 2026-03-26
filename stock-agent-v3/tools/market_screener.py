@@ -74,7 +74,7 @@ def get_market_movers(top_n: int = 50) -> dict[str, Any]:
                 "下跌家数": down,
                 "涨停家数": zt,
                 "跌停家数": dt,
-                "平均涨跌幅(%)": round(avg_pct, 2),
+                "涨跌比(%)": round(avg_pct, 2),
                 "市场情绪": "偏强" if avg_pct > 5 else ("偏弱" if avg_pct < -5 else "中性"),
             }
     except Exception as e:
