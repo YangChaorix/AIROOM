@@ -336,6 +336,15 @@ def serve_index():
     return FileResponse(p)
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.svg", include_in_schema=False)
+def serve_favicon():
+    p = os.path.join(WEB_DIR, "favicon.svg")
+    if not os.path.exists(p):
+        raise HTTPException(404, "Favicon not found")
+    return FileResponse(p, media_type="image/svg+xml")
+
+
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 @app.get("/api/summary", dependencies=[AUTH])
 def api_summary():
