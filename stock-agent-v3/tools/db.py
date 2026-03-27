@@ -112,9 +112,48 @@ CREATE TABLE IF NOT EXISTS prompts (
     version     TEXT NOT NULL,
     is_active   INTEGER DEFAULT 1,
     created_at  TEXT NOT NULL,
-    note        TEXT
+    note        TEXT,
+    source      TEXT NOT NULL DEFAULT 'human'
 );
 CREATE INDEX IF NOT EXISTS idx_prompts_agent ON prompts(agent_name, is_active);
+
+CREATE TABLE IF NOT EXISTS critic_reports (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_date            TEXT NOT NULL,
+    run_id              TEXT NOT NULL DEFAULT '',
+    screener_run_id     TEXT NOT NULL DEFAULT '',
+    critique_markdown   TEXT,
+    avg_pick_return     REAL,
+    market_avg_return   REAL,
+    beat_count          INTEGER,
+    miss_count          INTEGER,
+    suggested_prompt    TEXT,
+    suggested_prompt_id INTEGER,
+    previous_prompt_id  INTEGER,
+    created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_critic_date ON critic_reports(run_date);
+
+CREATE TABLE IF NOT EXISTS critic_stock_performance (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_date        TEXT NOT NULL,
+    critic_run_id   TEXT NOT NULL,
+    stock_code      TEXT NOT NULL,
+    stock_name      TEXT,
+    rank            INTEGER,
+    total_score     INTEGER,
+    d1_score        INTEGER, d2_score INTEGER, d3_score INTEGER,
+    d4_score        INTEGER, d5_score INTEGER, d6_score INTEGER,
+    open_price      REAL,
+    close_price     REAL,
+    pct_return      REAL,
+    market_avg      REAL,
+    beat_market     INTEGER,
+    created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_csp_date ON critic_stock_performance(run_date);
+CREATE INDEX IF NOT EXISTS idx_csp_run  ON critic_stock_performance(run_date, critic_run_id);
+CREATE INDEX IF NOT EXISTS idx_csp_code ON critic_stock_performance(stock_code);
 
 CREATE TABLE IF NOT EXISTS event_history (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,6 +199,9 @@ _DEFAULT_CONFIGS = [
     ("schedule_review_hour",         "15", "number", "复盘执行小时",           "每天复盘的小时（0-23，北京时间）"),
     ("schedule_review_minute",       "35", "number", "复盘执行分钟",           "每天复盘的分钟（0-59）"),
     ("schedule_review_days",         "1,2,3,4,5", "text", "复盘执行日",        "周几执行，逗号分隔：1=周一…7=周日；空=每天"),
+    ("schedule_critic_hour",         "15", "number", "批评Agent执行小时",      "收盘验证时间（北京时间，0-23）"),
+    ("schedule_critic_minute",       "40", "number", "批评Agent执行分钟",      "批评Agent执行分钟（0-59）"),
+    ("schedule_critic_days",         "1,2,3,4,5", "text", "批评Agent执行日",   "周几执行，逗号分隔：1=周一…7=周日；空=每天"),
     ("log_retention_days",           "3",          "number", "日志保留天数",    "自动清理超出天数的日志文件，0=不清理"),
 ]
 
@@ -292,6 +334,120 @@ class StockAgentDB:
                 except Exception:
                     pass
             conn.commit()
+            # 迁移：prompts 加 source 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(prompts)").fetchall()]
+            if "source" not in cols:
+                conn.execute("ALTER TABLE prompts ADD COLUMN source TEXT NOT NULL DEFAULT 'human'")
+                conn.commit()
+            # 迁移：critic_reports / critic_stock_performance 表（首次建库时 DDL 已含，旧库需手动创建）
+            tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            if "critic_reports" not in tables:
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS critic_reports (
+                        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                        run_date            TEXT NOT NULL,
+                        run_id              TEXT NOT NULL DEFAULT '',
+                        screener_run_id     TEXT NOT NULL DEFAULT '',
+                        critique_markdown   TEXT,
+                        avg_pick_return     REAL,
+                        market_avg_return   REAL,
+                        beat_count          INTEGER,
+                        miss_count          INTEGER,
+                        suggested_prompt    TEXT,
+                        suggested_prompt_id INTEGER,
+                        previous_prompt_id  INTEGER,
+                        created_at          TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_critic_date ON critic_reports(run_date);
+                """)
+            if "critic_stock_performance" not in tables:
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS critic_stock_performance (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        run_date        TEXT NOT NULL,
+                        critic_run_id   TEXT NOT NULL,
+                        stock_code      TEXT NOT NULL,
+                        stock_name      TEXT,
+                        rank            INTEGER,
+                        total_score     INTEGER,
+                        d1_score INTEGER, d2_score INTEGER, d3_score INTEGER,
+                        d4_score INTEGER, d5_score INTEGER, d6_score INTEGER,
+                        open_price      REAL,
+                        close_price     REAL,
+                        pct_return      REAL,
+                        market_avg      REAL,
+                        beat_market     INTEGER,
+                        created_at      TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_csp_date ON critic_stock_performance(run_date);
+                    CREATE INDEX IF NOT EXISTS idx_csp_run  ON critic_stock_performance(run_date, critic_run_id);
+                    CREATE INDEX IF NOT EXISTS idx_csp_code ON critic_stock_performance(stock_code);
+                """)
+            conn.commit()
+            # 迁移：将旧的 system_prompt（含输出格式尾部）裁剪为纯可编辑部分，并种子化 output_format
+            _SPLIT_MARKERS = {
+                "trigger":  "**最终请以JSON格式输出**",
+                "screener": "**请以JSON格式输出**",
+                "review":   "**输出格式（Markdown",
+                "critic":   "━━━ 第二部分",
+            }
+            for agent_name, marker in _SPLIT_MARKERS.items():
+                rows = conn.execute(
+                    "SELECT id, content FROM prompts WHERE agent_name=? AND prompt_name='system_prompt'",
+                    (agent_name,),
+                ).fetchall()
+                for row in rows:
+                    content = row[1] or ""
+                    if marker in content:
+                        editable_part = content[:content.index(marker)].rstrip()
+                        conn.execute(
+                            "UPDATE prompts SET content=? WHERE id=?",
+                            (editable_part, row[0]),
+                        )
+                # 种子化 output_format（已存在则跳过）
+                exists = conn.execute(
+                    "SELECT 1 FROM prompts WHERE agent_name=? AND prompt_name='output_format' LIMIT 1",
+                    (agent_name,),
+                ).fetchone()
+                if not exists:
+                    # 从代码常量取固定格式部分
+                    try:
+                        if agent_name == "trigger":
+                            from agents.trigger_agent import _TRIGGER_OUTPUT_FORMAT as _fmt
+                        elif agent_name == "screener":
+                            from agents.screener_agent import _SCREENER_OUTPUT_FORMAT as _fmt
+                        elif agent_name == "review":
+                            from agents.review_agent import _REVIEW_OUTPUT_FORMAT as _fmt
+                        elif agent_name == "critic":
+                            from agents.critic_agent import _CRITIC_OUTPUT_FORMAT as _fmt
+                        else:
+                            _fmt = None
+                        if _fmt:
+                            conn.execute(
+                                """INSERT INTO prompts
+                                   (agent_name, prompt_name, content, version, is_active, created_at, note, source)
+                                   VALUES (?, 'output_format', ?, 'v1', 1, ?, '系统固定输出格式（请勿修改）', 'system')""",
+                                (agent_name, _fmt, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                            )
+                    except Exception as _e:
+                        logger.warning(f"[迁移] 种子化 {agent_name} output_format 失败: {_e}")
+            conn.commit()
+            # 种子化 critic system_prompt（首次启动时写入，已存在则跳过）
+            exists_sp = conn.execute(
+                "SELECT 1 FROM prompts WHERE agent_name='critic' AND prompt_name='system_prompt' LIMIT 1"
+            ).fetchone()
+            if not exists_sp:
+                try:
+                    from agents.critic_agent import _CRITIC_EDITABLE
+                    conn.execute(
+                        """INSERT INTO prompts
+                           (agent_name, prompt_name, content, version, is_active, created_at, note, source)
+                           VALUES ('critic', 'system_prompt', ?, 'v1', 1, ?, '默认种子', 'human')""",
+                        (_CRITIC_EDITABLE, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                    )
+                    conn.commit()
+                except Exception as _e:
+                    logger.warning(f"[迁移] 种子化 critic system_prompt 失败: {_e}")
             # 初始化默认系统配置（已存在的 key 跳过）
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             for key, value, typ, label, note in _DEFAULT_CONFIGS:
@@ -678,8 +834,14 @@ class StockAgentDB:
     # ── prompts ───────────────────────────────────────────────────────────────
 
     def save_prompt(self, agent_name: str, prompt_name: str, content: str,
-                    version: str = None, note: str = "") -> int:
-        """保存新版本 Prompt（旧版本 is_active 设为 0），返回新行 id"""
+                    version: str = None, note: str = "",
+                    active: bool = True, source: str = "human") -> int:
+        """
+        保存新版本 Prompt，返回新行 id。
+        active=True（默认）：归档旧版本，新版本设为激活。
+        active=False：静默保存为未激活（如批评Agent的建议版本）。
+        source: 'human'（人工编辑）或 'critic'（批评Agent自动生成）。
+        """
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self.get_conn() as conn:
             # 自动生成版本号
@@ -698,29 +860,21 @@ class StockAgentDB:
                             pass
                 version = f"v{max_n + 1}"
 
-            # 旧版本全部归档
-            conn.execute(
-                "UPDATE prompts SET is_active=0 WHERE agent_name=? AND prompt_name=?",
-                (agent_name, prompt_name),
-            )
+            if active:
+                # 旧版本全部归档
+                conn.execute(
+                    "UPDATE prompts SET is_active=0 WHERE agent_name=? AND prompt_name=?",
+                    (agent_name, prompt_name),
+                )
             # 插入新版本
             cur = conn.execute(
                 """INSERT INTO prompts
-                   (agent_name, prompt_name, content, version, is_active, created_at, note)
-                   VALUES (?, ?, ?, ?, 1, ?, ?)""",
-                (agent_name, prompt_name, content, version, created_at, note),
+                   (agent_name, prompt_name, content, version, is_active, created_at, note, source)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (agent_name, prompt_name, content, version, 1 if active else 0,
+                 created_at, note, source),
             )
             new_id = cur.lastrowid
-
-            # 100 条上限：删除最旧的超出部分
-            conn.execute(
-                """DELETE FROM prompts WHERE agent_name=? AND prompt_name=?
-                   AND id NOT IN (
-                     SELECT id FROM prompts WHERE agent_name=? AND prompt_name=?
-                     ORDER BY id DESC LIMIT 100
-                   )""",
-                (agent_name, prompt_name, agent_name, prompt_name),
-            )
             return new_id
 
     def activate_prompt(self, prompt_id: int) -> bool:
@@ -750,14 +904,135 @@ class StockAgentDB:
         return row["content"] if row else None
 
     def list_prompt_versions(self, agent_name: str) -> list:
-        """列出某 Agent 的所有 Prompt 版本"""
+        """列出某 Agent 的所有 Prompt 版本（含 source 字段）"""
         with self.get_conn() as conn:
             rows = conn.execute(
-                """SELECT id, prompt_name, version, is_active, created_at, note
+                """SELECT id, prompt_name, version, is_active, created_at, note, source
                    FROM prompts WHERE agent_name=? ORDER BY id DESC""",
                 (agent_name,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def seed_output_format(self, agent_name: str, content: str) -> None:
+        """
+        种子化固定输出格式模板（首次写入，已存在则跳过）。
+        使用 prompt_name='output_format'，source='system'。
+        critic agent 或人工操作均不应调用 save_prompt 覆盖此条目。
+        """
+        with self.get_conn() as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM prompts WHERE agent_name=? AND prompt_name='output_format' LIMIT 1",
+                (agent_name,),
+            ).fetchone()
+            if not exists:
+                conn.execute(
+                    """INSERT INTO prompts
+                       (agent_name, prompt_name, content, version, is_active, created_at, note, source)
+                       VALUES (?, 'output_format', ?, 'v1', 1, ?, '系统固定输出格式（请勿修改）', 'system')""",
+                    (agent_name, content, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                )
+
+    def get_output_format(self, agent_name: str) -> Optional[str]:
+        """读取 agent 的固定输出格式模板，不存在返回 None"""
+        return self.get_active_prompt(agent_name, "output_format")
+
+    def get_prompt_by_id(self, prompt_id: int) -> Optional[dict]:
+        """按 id 读取 Prompt 记录（含 content）"""
+        with self.get_conn() as conn:
+            row = conn.execute(
+                "SELECT id, agent_name, prompt_name, content, version, is_active, created_at, note, source "
+                "FROM prompts WHERE id=?",
+                (prompt_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    # ── critic ────────────────────────────────────────────────────────────────
+
+    def save_critic_report(self, run_date: str, screener_run_id: str,
+                           critique_markdown: str, avg_pick_return: float,
+                           market_avg_return: float, beat_count: int,
+                           miss_count: int, suggested_prompt: str = None,
+                           previous_prompt_id: int = None) -> tuple:
+        """保存批评报告，返回 (critic_run_id: str, row_id: int)"""
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        run_id = created_at
+        with self.get_conn() as conn:
+            cur = conn.execute(
+                """INSERT INTO critic_reports
+                   (run_date, run_id, screener_run_id, critique_markdown,
+                    avg_pick_return, market_avg_return, beat_count, miss_count,
+                    suggested_prompt, previous_prompt_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (run_date, run_id, screener_run_id or "", critique_markdown,
+                 avg_pick_return, market_avg_return, beat_count, miss_count,
+                 suggested_prompt, previous_prompt_id, created_at),
+            )
+            return run_id, cur.lastrowid
+
+    def link_critic_prompt(self, critic_report_id: int, prompt_id: int) -> None:
+        """将批评报告与已保存的 Prompt 版本关联"""
+        with self.get_conn() as conn:
+            conn.execute(
+                "UPDATE critic_reports SET suggested_prompt_id=? WHERE id=?",
+                (prompt_id, critic_report_id),
+            )
+
+    def save_critic_performance(self, run_date: str, critic_run_id: str,
+                                stocks: list) -> None:
+        """批量插入个股表现数据"""
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self.get_conn() as conn:
+            for s in stocks:
+                conn.execute(
+                    """INSERT INTO critic_stock_performance
+                       (run_date, critic_run_id, stock_code, stock_name, rank,
+                        total_score, d1_score, d2_score, d3_score, d4_score, d5_score, d6_score,
+                        open_price, close_price, pct_return, market_avg, beat_market, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        run_date, critic_run_id,
+                        s.get("stock_code", ""), s.get("stock_name", ""),
+                        s.get("rank"), s.get("total_score"),
+                        s.get("d1_score"), s.get("d2_score"), s.get("d3_score"),
+                        s.get("d4_score"), s.get("d5_score"), s.get("d6_score"),
+                        s.get("open_price"), s.get("close_price"),
+                        s.get("pct_return"), s.get("market_avg"),
+                        s.get("beat_market", -1), created_at,
+                    ),
+                )
+
+    def get_critic_report(self, run_date: str, run_id: str = None) -> dict:
+        """返回批评报告 + stocks 列表，不存在返回 {}"""
+        with self.get_conn() as conn:
+            if run_id:
+                row = conn.execute(
+                    "SELECT * FROM critic_reports WHERE run_date=? AND run_id=? ORDER BY id DESC LIMIT 1",
+                    (run_date, run_id),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM critic_reports WHERE run_date=? ORDER BY id DESC LIMIT 1",
+                    (run_date,),
+                ).fetchone()
+            if not row:
+                return {}
+            report = dict(row)
+            stocks = conn.execute(
+                """SELECT * FROM critic_stock_performance
+                   WHERE run_date=? AND critic_run_id=? ORDER BY rank""",
+                (run_date, report["run_id"]),
+            ).fetchall()
+            report["stocks"] = [dict(s) for s in stocks]
+        return report
+
+    def get_critic_run_ids(self, run_date: str) -> list:
+        """返回某日所有批次 run_id，最新优先"""
+        with self.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT run_id FROM critic_reports WHERE run_date=? ORDER BY id DESC",
+                (run_date,),
+            ).fetchall()
+        return [r["run_id"] for r in rows]
 
     def news_seen_before(self, news_hash: str, today: str) -> Optional[str]:
         """若该 news_hash 在 today 之前的日期已存在，返回最早日期；否则返回 None"""

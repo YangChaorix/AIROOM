@@ -380,7 +380,7 @@ class NewsCacheManager:
             })
 
         # 按预定义顺序输出来源
-        source_order = ["财联社", "东方财富", "同花顺", "新浪财经", "财联社电报", "国家发改委", "财新"]
+        source_order = ["财联社", "东方财富", "同花顺", "新浪财经", "财联社电报", "上海金属网", "国家发改委", "工信部", "国家能源局", "生态环境部", "国家医保局", "财新"]
         for src in source_order:
             if src in source_groups:
                 result[src] = source_groups[src]
@@ -395,8 +395,8 @@ class NewsCacheManager:
 def _source_priority(source: str) -> Priority:
     """根据来源名称返回优先级"""
     HIGH_SOURCES = {"财联社", "东方财富", "同花顺"}
-    MEDIUM_SOURCES = {"新浪财经", "财联社电报"}
-    LOW_SOURCES = {"国家发改委", "财新"}
+    MEDIUM_SOURCES = {"新浪财经", "财联社电报", "上海金属网"}
+    LOW_SOURCES = {"国家发改委", "工信部", "国家能源局", "生态环境部", "国家医保局", "财新"}
     if source in HIGH_SOURCES:
         return Priority.HIGH
     if source in MEDIUM_SOURCES:
@@ -417,6 +417,11 @@ def collect_all_due_sources(cache_manager: NewsCacheManager = None) -> dict:
         get_policy_news,
         get_cls_telegraph,
         get_ndrc_news,
+        get_metal_industry_news,
+        get_miit_news,
+        get_nea_news,
+        get_mee_news,
+        get_nhsa_news,
     )
 
     if cache_manager is None:
@@ -501,6 +506,22 @@ def collect_all_due_sources(cache_manager: NewsCacheManager = None) -> dict:
     else:
         logger.info("财联社电报尚未到采集时间，跳过")
 
+    # MEDIUM 来源 3：上海金属网（有色金属行业新闻）
+    SHMET = "上海金属网"
+    if cache_manager.is_source_due(SHMET, Priority.MEDIUM, cache):
+        logger.info(f"MEDIUM 来源待采集: {SHMET}，调用 get_metal_industry_news()...")
+        try:
+            metal_items = get_metal_industry_news()
+            added = cache_manager.add_news(metal_items, SHMET, cache)
+            cache_manager.mark_source_collected(SHMET, cache)
+            result[SHMET] = added
+            logger.info(f"  {SHMET}: 新增 {added} 条（获取 {len(metal_items)} 条）")
+        except Exception as e:
+            logger.warning(f"上海金属网采集失败: {e}")
+            result[SHMET] = 0
+    else:
+        logger.info("上海金属网尚未到采集时间，跳过")
+
     # LOW 来源：国家发改委
     NDRC = "国家发改委"
     if cache_manager.is_source_due(NDRC, Priority.LOW, cache):
@@ -516,6 +537,70 @@ def collect_all_due_sources(cache_manager: NewsCacheManager = None) -> dict:
             result[NDRC] = 0
     else:
         logger.info("国家发改委尚未到采集时间，跳过")
+
+    # LOW 来源：工信部（化工/电子/制造业政策）
+    MIIT = "工信部"
+    if cache_manager.is_source_due(MIIT, Priority.LOW, cache):
+        logger.info(f"LOW 来源待采集: {MIIT}，调用 get_miit_news()...")
+        try:
+            miit_items = get_miit_news(max_articles=5)
+            added = cache_manager.add_news(miit_items, MIIT, cache)
+            cache_manager.mark_source_collected(MIIT, cache)
+            result[MIIT] = added
+            logger.info(f"  {MIIT}: 新增 {added} 条（获取 {len(miit_items)} 条）")
+        except Exception as e:
+            logger.warning(f"工信部采集失败: {e}")
+            result[MIIT] = 0
+    else:
+        logger.info("工信部尚未到采集时间，跳过")
+
+    # LOW 来源：国家能源局（石油/天然气/电力/新能源政策）
+    NEA = "国家能源局"
+    if cache_manager.is_source_due(NEA, Priority.LOW, cache):
+        logger.info(f"LOW 来源待采集: {NEA}，调用 get_nea_news()...")
+        try:
+            nea_items = get_nea_news(max_articles=5)
+            added = cache_manager.add_news(nea_items, NEA, cache)
+            cache_manager.mark_source_collected(NEA, cache)
+            result[NEA] = added
+            logger.info(f"  {NEA}: 新增 {added} 条（获取 {len(nea_items)} 条）")
+        except Exception as e:
+            logger.warning(f"国家能源局采集失败: {e}")
+            result[NEA] = 0
+    else:
+        logger.info("国家能源局尚未到采集时间，跳过")
+
+    # LOW 来源：生态环境部（环保/化工排放/碳排放政策）
+    MEE = "生态环境部"
+    if cache_manager.is_source_due(MEE, Priority.LOW, cache):
+        logger.info(f"LOW 来源待采集: {MEE}，调用 get_mee_news()...")
+        try:
+            mee_items = get_mee_news(max_articles=5)
+            added = cache_manager.add_news(mee_items, MEE, cache)
+            cache_manager.mark_source_collected(MEE, cache)
+            result[MEE] = added
+            logger.info(f"  {MEE}: 新增 {added} 条（获取 {len(mee_items)} 条）")
+        except Exception as e:
+            logger.warning(f"生态环境部采集失败: {e}")
+            result[MEE] = 0
+    else:
+        logger.info("生态环境部尚未到采集时间，跳过")
+
+    # LOW 来源：国家医保局（医保目录、集采、DRG/DIP改革）
+    NHSA = "国家医保局"
+    if cache_manager.is_source_due(NHSA, Priority.LOW, cache):
+        logger.info(f"LOW 来源待采集: {NHSA}，调用 get_nhsa_news()...")
+        try:
+            nhsa_items = get_nhsa_news(max_articles=5)
+            added = cache_manager.add_news(nhsa_items, NHSA, cache)
+            cache_manager.mark_source_collected(NHSA, cache)
+            result[NHSA] = added
+            logger.info(f"  {NHSA}: 新增 {added} 条（获取 {len(nhsa_items)} 条）")
+        except Exception as e:
+            logger.warning(f"国家医保局采集失败: {e}")
+            result[NHSA] = 0
+    else:
+        logger.info("国家医保局尚未到采集时间，跳过")
 
     # 保存缓存
     cache_manager.save(cache)

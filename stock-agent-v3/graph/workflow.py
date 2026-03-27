@@ -1,5 +1,5 @@
 """
-LangGraph 三层工作流（v1.1）
+LangGraph 三层工作流（v1.2）
 START → trigger_node → [has_triggers?]
                               ↓ Yes
                        screener_node
@@ -8,8 +8,9 @@ START → trigger_node → [has_triggers?]
                               ↓ No
                        review_node → END
 
-run_mode: 'full' | 'trigger_only' | 'review_only'
+run_mode: 'full' | 'trigger_only' | 'review_only' | 'critic_only'
 v1.1: WorkflowState 新增 search_results 字段用于传递 Web 搜索结果
+v1.2: WorkflowState 新增 critic_result 字段；新增 run_critic_workflow() 独立函数
 """
 
 import logging
@@ -26,12 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 class WorkflowState(TypedDict):
-    run_mode: str               # 'full' | 'trigger_only' | 'review_only'
+    run_mode: str               # 'full' | 'trigger_only' | 'review_only' | 'critic_only'
     date: str
     trigger_result: Optional[dict]
     screener_result: Optional[dict]
     review_result: Optional[dict]
     search_results: Optional[list]   # v1.1: Serper Web 搜索结果（可选透传）
+    critic_result: Optional[dict]    # v1.2: 批评Agent结果
     error: Optional[str]
 
 
@@ -189,6 +191,7 @@ def run_workflow(run_mode: str = "full") -> WorkflowState:
             "screener_result": None,
             "review_result": None,
             "search_results": None,
+            "critic_result": None,
             "error": None,
         }
         final_state = workflow.invoke(initial_state)
@@ -202,6 +205,60 @@ def run_workflow(run_mode: str = "full") -> WorkflowState:
 
         return final_state
 
+    except Exception as e:
+        if run_id is not None:
+            try:
+                from tools.db import db
+                db.finish_run(run_id, "error", str(e))
+            except Exception:
+                pass
+        raise
+
+
+def run_critic_workflow(run_date: str = None, trigger_mode: str = "manual") -> WorkflowState:
+    """
+    独立运行批评 Agent，不依赖 trigger/screener/review 节点。
+    记录 run_log（run_mode='critic_only:manual' 或 'critic_only:auto'）。
+
+    Args:
+        run_date: 要分析的日期（默认今日）
+        trigger_mode: 'manual' | 'auto'
+
+    Returns:
+        WorkflowState-compatible dict
+    """
+    from agents.critic_agent import run_critic_agent
+    today = run_date or datetime.now().strftime("%Y-%m-%d")
+    run_mode = f"critic_only:{trigger_mode}"
+
+    run_id = None
+    try:
+        from tools.db import db
+        run_id = db.start_run(run_mode)
+        logger.debug(f"批评Agent run_log 开始：run_id={run_id}, date={today}")
+    except Exception as e:
+        logger.warning(f"DB start_run 失败: {e}")
+
+    try:
+        result = run_critic_agent(run_date=today)
+        status = "error" if result.get("error") else "success"
+        if run_id is not None:
+            try:
+                from tools.db import db
+                db.finish_run(run_id, status)
+            except Exception as e:
+                logger.warning(f"DB finish_run 失败: {e}")
+
+        return {
+            "run_mode": run_mode,
+            "date": today,
+            "trigger_result": None,
+            "screener_result": None,
+            "review_result": None,
+            "search_results": None,
+            "critic_result": result,
+            "error": result.get("error"),
+        }
     except Exception as e:
         if run_id is not None:
             try:

@@ -130,3 +130,5 @@ def search_multiple_queries(
 
     logger.info(f"Serper 多查询搜索完成，共 {len(all_results)} 条去重结果（{len(queries)} 个查询）")
     return all_results
+
+

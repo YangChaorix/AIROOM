@@ -26,6 +26,9 @@
     },
     "review": {
       "model": "deepseek/deepseek-chat"
+    },
+    "critic": {
+      "model": "deepseek/deepseek-chat"
     }
   }
 }

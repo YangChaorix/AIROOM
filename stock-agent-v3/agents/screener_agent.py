@@ -19,7 +19,8 @@ from tools.technical_tools import calc_volume_breakthrough, calc_long_term_trend
 
 logger = logging.getLogger(__name__)
 
-SCREENER_SYSTEM_PROMPT = """你是一个A股企业基本面分析师。你会收到一份今日触发的行业和企业列表，需要对其中每家企业从多个维度进行分析评分，筛选出最值得关注的Top 20。
+# ── 可编辑部分（Critic Agent 可修改） ────────────────────────────────────────
+_SCREENER_EDITABLE = """你是一个A股企业基本面分析师。你会收到一份今日触发的行业和企业列表，需要对其中每家企业从多个维度进行分析评分，筛选出最值得关注的Top 20。
 
 **输入**：触发Agent输出的行业/企业列表 + 当日触发原因 + 各企业量化数据
 
@@ -67,7 +68,7 @@ SCREENER_SYSTEM_PROMPT = """你是一个A股企业基本面分析师。你会收
 - 重点关注：过去好几年没涨过、股价长期横盘、近期才开始启动的票
 - 这类票往往是大股东在默默建仓，一旦启动往往涨幅巨大
 
-**输出格式**
+**输出说明**
 按总分排序，输出Top 20企业，每家包括：
 1. 企业名称 + 股票代码
 2. 触发原因（对应哪条初筛信息）
@@ -79,9 +80,10 @@ SCREENER_SYSTEM_PROMPT = """你是一个A股企业基本面分析师。你会收
 - 如果一家企业触发多条初筛信息，适当加权
 - 龙头企业通常比中小企业先反应，但中小企业弹性更大——请在推荐理由中说明
 - 永安药业案例参考：美国FDA政策→全球牛磺酸需求扩大→永安药业占全球70%市场份额→主营产品直接受益→这才是真正的精准匹配
-- 成本传导特别注意：原材料上涨时，不要把成本承压的下游企业评为高受益（D2=0）
+- 成本传导特别注意：原材料上涨时，不要把成本承压的下游企业评为高受益（D2=0）"""
 
-**请以JSON格式输出**，结构如下：
+# ── 固定输出格式（系统内置，不可修改，前端/后端解析依赖此结构） ─────────────
+_SCREENER_OUTPUT_FORMAT = """**请以JSON格式输出**，结构如下：
 {
   "date": "YYYY-MM-DD",
   "top20": [
@@ -105,6 +107,9 @@ SCREENER_SYSTEM_PROMPT = """你是一个A股企业基本面分析师。你会收
   ],
   "analysis_summary": "本次精筛总体说明"
 }"""
+
+# 完整提示词（代码常量后备，运行时以 DB 为准）
+SCREENER_SYSTEM_PROMPT = _SCREENER_EDITABLE + "\n\n" + _SCREENER_OUTPUT_FORMAT
 
 
 def build_llm():
@@ -325,10 +330,12 @@ def run_screener_agent(trigger_result: dict) -> dict:
     logger.debug("【精筛输入 - 所有企业量化数据】\n" + company_data_text)
     try:
         from tools.db import db as _db
-        _content = _db.get_active_prompt("screener", "system_prompt")
+        _editable = _db.get_active_prompt("screener", "system_prompt") or _SCREENER_EDITABLE
+        _db.seed_output_format("screener", _SCREENER_OUTPUT_FORMAT)
+        _fmt = _db.get_output_format("screener") or _SCREENER_OUTPUT_FORMAT
     except Exception:
-        _content = None
-    _screener_prompt = _content if _content else SCREENER_SYSTEM_PROMPT
+        _editable, _fmt = _SCREENER_EDITABLE, _SCREENER_OUTPUT_FORMAT
+    _screener_prompt = _editable + "\n\n" + _fmt
 
     llm = build_llm()
 
@@ -408,14 +415,45 @@ def run_screener_agent(trigger_result: dict) -> dict:
         _merge_batch(batch)
         batches_run += 1
 
-    # 不足 top_n 则补跑一批（最多 1 次）
+    # 不足 top_n 则补跑一批（最多 1 次），使用专用 prompt 告知已选列表并允许低分纳入
     if len(collected) < top_n:
         shortage = top_n - len(collected)
         current = len(collected)
-        exclude = [c for c in collected if not c.startswith("_nocode_")]
-        rank_range = f"第{current+1}名到第{top_n}名（补充 Top {current+1}~{top_n}）"
+        already_selected = [v for k, v in collected.items() if not k.startswith("_nocode_")]
+        selected_summary = "\n".join(
+            f"- {item.get('name', '')}({item.get('code', '')}) 总分={_get_total(item)}"
+            for item in already_selected
+        )
+        fill_human = f"""今日日期：{today}
+
+【触发Agent输出（初筛结果）】
+{trigger_summary}
+
+【各企业量化数据】
+{company_data_text}
+
+【已选中的股票（严禁重复输出）】
+{selected_summary}
+
+以上 {len(already_selected)} 家企业已入选，请从剩余候选中再选出 {shortage} 家，严格按照JSON格式输出。
+注意：
+- ⚠️ 严禁输出上面已选中的股票，代码重复视为无效
+- 此轮为补充选股，候选不足时允许纳入总分 6~8 分的企业
+- 对于没有股票代码的企业，请根据你的知识推断其股票代码进行评分
+- 只输出 JSON，不要多余文字
+- 每个维度理由控制在15字以内，推荐理由控制在60字以内
+- ⚠️ 特别注意D2维度：原材料/能源涨价时，下游制造企业是成本承压方，D2评0分"""
         logger.info(f"去重后仅 {current} 条，不足 {top_n}，补跑一批补充 {shortage} 条...")
-        batch = _call_batch(rank_range, "补充批", exclude_codes=exclude)
+        messages = [SystemMessage(content=_screener_prompt), HumanMessage(content=fill_human)]
+        resp = llm.invoke(messages)
+        logger.debug(f"【LLM 输出 - 补充批 原始响应】\n" + resp.content)
+        fill_result = _parse_screener_json(resp.content, today)
+        batch = fill_result.get("top20", [])
+        for item in batch:
+            logger.info(
+                f"  [补充批] #{item.get('rank','?')} {item.get('name','')}({item.get('code','')}) "
+                f"总分={_get_total(item)} 触发={item.get('trigger_reason','')[:30]}"
+            )
         logger.info(f"补充批完成，得到 {len(batch)} 条")
         _merge_batch(batch)
 

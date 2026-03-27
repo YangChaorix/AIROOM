@@ -288,10 +288,373 @@ def get_ndrc_news(max_articles: int = 5) -> list[dict]:
         return []
 
 
+def get_metal_industry_news() -> list[dict]:
+    """
+    上海金属网有色金属行业新闻（akshare futures_news_shmet）
+    覆盖：铜、铝、镍、锂、锌、铅等有色金属实时资讯
+    """
+    import re
+    try:
+        df = ak.futures_news_shmet()
+        cutoff = datetime.now() - timedelta(hours=24)
+        result = []
+        for _, row in df.iterrows():
+            pub_dt = row["发布时间"]
+            if hasattr(pub_dt, 'tzinfo') and pub_dt.tzinfo:
+                pub_dt = pub_dt.replace(tzinfo=None)
+            if pub_dt < cutoff:
+                continue
+            content = _truncate(str(row["内容"]), 2000)
+            m = re.match(r'[【\[](.+?)[】\]]', content)
+            title = m.group(1) if m else content[:60]
+            result.append({
+                "标题": _truncate(title, 200),
+                "内容": content,
+                "来源": "上海金属网",
+                "时间": pub_dt.strftime("%Y-%m-%d %H:%M"),
+            })
+        logger.info(f"上海金属网: 获取 {len(result)} 条（24小时内）")
+        return result
+    except Exception as e:
+        logger.warning(f"上海金属网新闻获取失败: {e}")
+        return []
+
+
+def get_miit_news(max_articles: int = 5) -> list[dict]:
+    """
+    爬取工信部官网最新动态
+    来源：https://www.miit.gov.cn/（主页新闻链接）
+    覆盖：化工、电子、制造业、通信等工业和信息化政策动态
+    """
+    base_url = "https://www.miit.gov.cn"
+    list_url = base_url + "/"  # 主页包含最新新闻链接
+    results = []
+
+    try:
+        r = requests.get(list_url, headers=_HTTP_HEADERS, timeout=10)
+        r.encoding = "utf-8"
+        if r.status_code != 200:
+            logger.warning(f"工信部页面请求失败: status={r.status_code}")
+            return []
+
+        soup = BeautifulSoup(r.text, "html.parser")
+        links = []
+        seen_hrefs: set[str] = set()
+        for a in soup.select("a"):
+            title = a.get_text(strip=True)
+            href = a.get("href", "")
+            if not title or len(title) <= 8 or not href:
+                continue
+            # 只取工信部自己的新闻文章链接（含 /xwfb/ 的路径）
+            if "/xwfb/" not in href and "/zwgk/" not in href:
+                continue
+            if href.startswith("http"):
+                full_url = href
+                if "miit.gov.cn" not in full_url:
+                    continue
+            elif href.startswith("/"):
+                full_url = f"{base_url}{href}"
+            else:
+                full_url = f"{base_url}/{href.lstrip('./')}"
+            # 补全不完整的URL（截断的href）
+            if not full_url.endswith(".html") and not full_url.endswith(".htm"):
+                full_url += ".html"
+            if full_url in seen_hrefs:
+                continue
+            seen_hrefs.add(full_url)
+            links.append({"title": title, "url": full_url})
+
+        logger.info(f"工信部新闻列表获取成功：共 {len(links)} 条，抓取前 {max_articles} 篇正文")
+
+        for item in links[:max_articles]:
+            try:
+                ar = requests.get(item["url"], headers=_HTTP_HEADERS, timeout=10)
+                ar.encoding = "utf-8"
+                asoup = BeautifulSoup(ar.text, "html.parser")
+                # 工信部文章结构：正文在 .ccontent，时间在 .cinfo
+                content_div = (
+                    asoup.select_one(".ccontent")
+                    or asoup.select_one(".TRS_Editor")
+                    or asoup.select_one(".article-content")
+                    or asoup.select_one("#zoom")
+                )
+                content = content_div.get_text(separator=" ", strip=True) if content_div else ""
+                time_tag = asoup.select_one(".cinfo, .time, .pubdate, .pub_time")
+                pub_time = time_tag.get_text(strip=True) if time_tag else ""
+                results.append({
+                    "标题": _truncate(item["title"], 200),
+                    "内容": _truncate(content),
+                    "来源": "工信部",
+                    "时间": pub_time,
+                    "url": item["url"],
+                })
+            except Exception as e:
+                logger.debug(f"工信部文章正文获取失败 ({item['url']}): {e}")
+                results.append({
+                    "标题": _truncate(item["title"], 200),
+                    "内容": "",
+                    "来源": "工信部",
+                    "时间": "",
+                    "url": item["url"],
+                })
+
+        return results
+
+    except Exception as e:
+        logger.warning(f"工信部新闻获取失败: {e}")
+        return []
+
+
+def get_nea_news(max_articles: int = 5) -> list[dict]:
+    """
+    爬取国家能源局官网新闻
+    来源：http://www.nea.gov.cn/xwzx/index.htm
+    覆盖：石油、天然气、煤炭、电力、新能源等能源政策动态
+    """
+    base_url = "http://www.nea.gov.cn"
+    list_url = f"{base_url}/xwzx/index.htm"
+    results = []
+
+    try:
+        r = requests.get(list_url, headers=_HTTP_HEADERS, timeout=10)
+        r.encoding = "utf-8"
+        if r.status_code != 200:
+            logger.warning(f"国家能源局页面请求失败: status={r.status_code}")
+            return []
+
+        soup = BeautifulSoup(r.text, "html.parser")
+        links = []
+        seen_hrefs: set[str] = set()
+        for a in soup.select("ul.list li a, .news_area li a, li a"):
+            title = a.get_text(strip=True)
+            href = a.get("href", "")
+            if not title or len(title) <= 5 or not href:
+                continue
+            if href.startswith("http"):
+                full_url = href
+            elif href.startswith("/"):
+                full_url = f"{base_url}{href}"
+            elif href.startswith("../"):
+                # 如 ../20260319/xxx/c.html → http://www.nea.gov.cn/20260319/xxx/c.html
+                full_url = f"{base_url}/{href[3:]}"
+            else:
+                full_url = f"{base_url}/{href.lstrip('./')}"
+            if full_url in seen_hrefs:
+                continue
+            seen_hrefs.add(full_url)
+            links.append({"title": title, "url": full_url})
+
+        logger.info(f"国家能源局新闻列表获取成功：共 {len(links)} 条，抓取前 {max_articles} 篇正文")
+
+        for item in links[:max_articles]:
+            try:
+                ar = requests.get(item["url"], headers=_HTTP_HEADERS, timeout=10)
+                ar.encoding = "utf-8"
+                asoup = BeautifulSoup(ar.text, "html.parser")
+                # 国家能源局文章结构：正文在 .article-content，时间在 span.times
+                content_div = (
+                    asoup.select_one(".article-content")
+                    or asoup.select_one(".article-box")
+                    or asoup.select_one(".TRS_Editor")
+                    or asoup.select_one("#zoom")
+                )
+                content = content_div.get_text(separator=" ", strip=True) if content_div else ""
+                time_tag = asoup.select_one("span.times, .time, .pubdate, .pub_time")
+                pub_time = time_tag.get_text(strip=True) if time_tag else ""
+                results.append({
+                    "标题": _truncate(item["title"], 200),
+                    "内容": _truncate(content),
+                    "来源": "国家能源局",
+                    "时间": pub_time,
+                    "url": item["url"],
+                })
+            except Exception as e:
+                logger.debug(f"国家能源局文章正文获取失败 ({item['url']}): {e}")
+                results.append({
+                    "标题": _truncate(item["title"], 200),
+                    "内容": "",
+                    "来源": "国家能源局",
+                    "时间": "",
+                    "url": item["url"],
+                })
+
+        return results
+
+    except Exception as e:
+        logger.warning(f"国家能源局新闻获取失败: {e}")
+        return []
+
+
+def get_mee_news(max_articles: int = 5) -> list[dict]:
+    """
+    爬取生态环境部官网新闻发布
+    来源：https://www.mee.gov.cn/ywdt/xwfb/
+    覆盖：环保政策、化工排放、碳排放、双碳目标等政策动态
+    """
+    base_url = "https://www.mee.gov.cn"
+    list_url = f"{base_url}/ywdt/xwfb/"
+    results = []
+
+    try:
+        r = requests.get(list_url, headers=_HTTP_HEADERS, timeout=10)
+        r.encoding = "utf-8"
+        if r.status_code != 200:
+            logger.warning(f"生态环境部页面请求失败: status={r.status_code}")
+            return []
+
+        soup = BeautifulSoup(r.text, "html.parser")
+        links = []
+        seen_hrefs: set[str] = set()
+        for li in soup.select("ul li"):
+            # 取第一个 a 标签作为标题链接
+            a = li.select_one("a")
+            if not a:
+                continue
+            title = a.get_text(strip=True)
+            href = a.get("href", "")
+            if not title or len(title) <= 5 or not href:
+                continue
+            if href.startswith("http"):
+                full_url = href
+            elif href.startswith("/"):
+                full_url = f"{base_url}{href}"
+            elif href.startswith("./"):
+                full_url = f"{base_url}/ywdt/xwfb/{href[2:]}"
+            else:
+                full_url = f"{base_url}/ywdt/xwfb/{href}"
+            if full_url in seen_hrefs:
+                continue
+            seen_hrefs.add(full_url)
+            # 提取日期
+            span = li.select_one("span")
+            pub_time = span.get_text(strip=True) if span else ""
+            links.append({"title": title, "url": full_url, "pub_time": pub_time})
+
+        logger.info(f"生态环境部新闻列表获取成功：共 {len(links)} 条，抓取前 {max_articles} 篇正文")
+
+        for item in links[:max_articles]:
+            try:
+                ar = requests.get(item["url"], headers=_HTTP_HEADERS, timeout=10)
+                ar.encoding = "utf-8"
+                asoup = BeautifulSoup(ar.text, "html.parser")
+                content_div = (
+                    asoup.select_one(".TRS_Editor")
+                    or asoup.select_one(".article-content")
+                    or asoup.select_one("#zoom")
+                    or asoup.select_one(".content")
+                )
+                content = content_div.get_text(separator=" ", strip=True) if content_div else ""
+                pub_time = item["pub_time"]
+                if not pub_time:
+                    time_tag = asoup.select_one(".time, .pubdate, .pub_time, .date")
+                    pub_time = time_tag.get_text(strip=True) if time_tag else ""
+                results.append({
+                    "标题": _truncate(item["title"], 200),
+                    "内容": _truncate(content),
+                    "来源": "生态环境部",
+                    "时间": pub_time,
+                    "url": item["url"],
+                })
+            except Exception as e:
+                logger.debug(f"生态环境部文章正文获取失败 ({item['url']}): {e}")
+                results.append({
+                    "标题": _truncate(item["title"], 200),
+                    "内容": "",
+                    "来源": "生态环境部",
+                    "时间": item["pub_time"],
+                    "url": item["url"],
+                })
+
+        return results
+
+    except Exception as e:
+        logger.warning(f"生态环境部新闻获取失败: {e}")
+        return []
+
+
+def get_nhsa_news(max_articles: int = 5) -> list[dict]:
+    """
+    爬取国家医保局官网新闻动态
+    来源：https://www.nhsa.gov.cn/（主页含大量静态文章链接）
+    覆盖：医保目录调整、集中带量采购（集采）、DRG/DIP支付改革、医保统计数据
+    """
+    base_url = "https://www.nhsa.gov.cn"
+    list_url = base_url + "/"  # 主页包含静态文章链接（col列表页为JS渲染，无法直接抓取）
+    results = []
+
+    try:
+        r = requests.get(list_url, headers=_HTTP_HEADERS, timeout=10)
+        r.encoding = "utf-8"
+        if r.status_code != 200:
+            logger.warning(f"国家医保局页面请求失败: status={r.status_code}")
+            return []
+
+        soup = BeautifulSoup(r.text, "html.parser")
+        links = []
+        seen_hrefs: set[str] = set()
+        for a in soup.select("a"):
+            title = a.get_text(strip=True)
+            href = a.get("href", "")
+            if not title or len(title) <= 8 or not href:
+                continue
+            # 只取医保局自己的文章链接（含 /art/ 的路径）
+            if "/art/" not in href:
+                continue
+            if href.startswith("http"):
+                full_url = href
+            elif href.startswith("/"):
+                full_url = f"{base_url}{href}"
+            else:
+                continue
+            if full_url in seen_hrefs:
+                continue
+            seen_hrefs.add(full_url)
+            links.append({"title": title, "url": full_url, "pub_time": ""})
+
+        logger.info(f"国家医保局新闻列表获取成功：共 {len(links)} 条，抓取前 {max_articles} 篇正文")
+
+        import re as _re
+        for item in links[:max_articles]:
+            # 从 URL 中提取日期（如 /art/2026/3/26/art_xxx.html → 2026-03-26）
+            m = _re.search(r"/art/(\d{4})/(\d{1,2})/(\d{1,2})/", item["url"])
+            pub_time = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}" if m else ""
+            try:
+                ar = requests.get(item["url"], headers=_HTTP_HEADERS, timeout=10)
+                ar.encoding = "utf-8"
+                asoup = BeautifulSoup(ar.text, "html.parser")
+                # 国家医保局文章结构：正文在 #zoom
+                content_div = asoup.select_one("#zoom") or asoup.select_one(".TRS_Editor")
+                content = content_div.get_text(separator=" ", strip=True) if content_div else ""
+                results.append({
+                    "标题": _truncate(item["title"], 200),
+                    "内容": _truncate(content),
+                    "来源": "国家医保局",
+                    "时间": pub_time,
+                    "url": item["url"],
+                })
+            except Exception as e:
+                logger.debug(f"国家医保局文章正文获取失败 ({item['url']}): {e}")
+                results.append({
+                    "标题": _truncate(item["title"], 200),
+                    "内容": "",
+                    "来源": "国家医保局",
+                    "时间": pub_time,
+                    "url": item["url"],
+                })
+
+        return results
+
+    except Exception as e:
+        logger.warning(f"国家医保局新闻获取失败: {e}")
+        return []
+
+
 def get_all_trigger_news() -> dict:
     """
     汇总所有触发Agent需要的新闻数据
     v1.1 新增：财联社电报
+    v1.2 新增：上海金属网、工信部、国家能源局、生态环境部
+    v1.3 新增：国家医保局
 
     Returns:
         结构化字典供LLM分析
@@ -302,5 +665,10 @@ def get_all_trigger_news() -> dict:
         "财经政策资讯": get_policy_news(),
         "财联社电报": get_cls_telegraph(),
         "国家发改委": get_ndrc_news(max_articles=5),
+        "工信部": get_miit_news(max_articles=5),
+        "国家能源局": get_nea_news(max_articles=5),
+        "生态环境部": get_mee_news(max_articles=5),
+        "国家医保局": get_nhsa_news(max_articles=5),
+        "上海金属网": get_metal_industry_news(),
     }
     return result

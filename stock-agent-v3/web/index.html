@@ -167,6 +167,11 @@ tr:hover td{background:#f8fafc}
 .src-财新{background:#ede9fe;color:#7c3aed}
 .src-财联社电报{background:#cffafe;color:#0891b2}
 .src-国家发改委{background:#d1fae5;color:#059669}
+.src-上海金属网{background:#ffedd5;color:#ea580c}
+.src-工信部{background:#e0e7ff;color:#4f46e5}
+.src-国家能源局{background:#fef9c3;color:#a16207}
+.src-生态环境部{background:#ccfbf1;color:#0f766e}
+.src-国家医保局{background:#ffe4e6;color:#be123c}
 
 /* ── Markdown ── */
 .md-content h1,.md-content h2,.md-content h3{color:var(--text);margin:16px 0 8px;font-weight:600}
@@ -225,6 +230,11 @@ body.dark .src-同花顺{background:rgba(59,130,246,.15);color:var(--blue)}
 body.dark .src-财新{background:rgba(139,92,246,.15);color:var(--purple)}
 body.dark .src-财联社电报{background:rgba(6,182,212,.15);color:var(--cyan)}
 body.dark .src-国家发改委{background:rgba(16,185,129,.15);color:var(--green)}
+body.dark .src-上海金属网{background:rgba(234,88,12,.15);color:#fdba74}
+body.dark .src-工信部{background:rgba(79,70,229,.15);color:#a5b4fc}
+body.dark .src-国家能源局{background:rgba(161,98,7,.15);color:#fcd34d}
+body.dark .src-生态环境部{background:rgba(15,118,110,.15);color:#5eead4}
+body.dark .src-国家医保局{background:rgba(190,18,60,.15);color:#fda4af}
 body.dark .status-completed{background:rgba(16,185,129,.15);color:var(--green)}
 body.dark .status-running{background:rgba(245,158,11,.15);color:var(--yellow)}
 body.dark .status-error{background:rgba(239,68,68,.15);color:var(--red)}
@@ -331,9 +341,9 @@ body.mobile-nav #topbar{padding:10px 12px}
     <div class="sb-section">主要功能</div>
     <div class="nav-item active" data-page="dashboard"><span class="icon">📊</span><span class="label">控制台</span></div>
     <div class="nav-item" data-page="news"><span class="icon">📰</span><span class="label">新闻动态</span></div>
-    <div class="nav-item" data-page="triggers"><span class="icon">⚡</span><span class="label">触发事件</span></div>
-    <div class="nav-item" data-page="picks"><span class="icon">🏆</span><span class="label">精选股票</span></div>
+    <div class="nav-item" data-page="picks"><span class="icon">⚡</span><span class="label">选股分析</span></div>
     <div class="nav-item" data-page="review"><span class="icon">📋</span><span class="label">市场复盘</span></div>
+    <div class="nav-item" data-page="critic"><span class="icon">🔬</span><span class="label">批评报告</span></div>
     <div class="nav-item" data-page="analyze"><span class="icon">🔍</span><span class="label">个股分析</span></div>
     <div class="sb-section" style="margin-top:8px">系统管理</div>
     <div class="nav-item" data-page="logs"><span class="icon">📜</span><span class="label">运行日志</span></div>
@@ -395,39 +405,39 @@ body.mobile-nav #topbar{padding:10px 12px}
     </div>
 
     <!-- ════ PICKS ════ -->
+    <!-- ════ PICKS + TRIGGERS (合并选股分析) ════ -->
     <div class="page" id="page-picks">
       <div class="page-scroll">
         <div class="section-header">
-          <div class="section-title">🏆 精选股票 · <span id="picks-date-label" class="badge badge-green">-</span></div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div class="section-title">选股分析 · <span id="picks-date-label" class="badge badge-green">-</span></div>
+            <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--border)">
+              <button id="analysis-tab-trigger-btn" class="btn btn-primary btn-sm" style="border-radius:0;border:none" onclick="switchAnalysisTab('trigger')">⚡ 触发事件</button>
+              <button id="analysis-tab-picks-btn" class="btn btn-ghost btn-sm" style="border-radius:0;border:none;border-left:1px solid var(--border)" onclick="switchAnalysisTab('picks')">🏆 精选股票</button>
+            </div>
+          </div>
           <div style="display:flex;align-items:center;gap:8px">
             <select id="picks-date-sel" style="font-size:12px;padding:2px 6px" onchange="onPicksDateChange()"><option value="">加载中...</option></select>
-            <span style="font-size:12px;color:var(--text2)">批次：</span>
-            <select id="picks-run-sel" style="font-size:12px;padding:2px 6px" onchange="onPicksRunChange()">
-              <option value="">加载中...</option>
-            </select>
             <button id="picks-run-btn" class="btn btn-primary btn-sm" onclick="triggerAnalysis('picks-run-btn')">▶ 触发分析</button>
             <button id="picks-screener-btn" class="btn btn-ghost btn-sm" onclick="triggerScreenerOnly()">♻ 重跑精筛</button>
           </div>
         </div>
-        <div id="picks-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
-      </div>
-    </div>
-
-    <!-- ════ TRIGGERS ════ -->
-    <div class="page" id="page-triggers">
-      <div class="page-scroll">
-        <div class="section-header">
-          <div class="section-title">⚡ 触发事件 · <span id="triggers-date-label" class="badge badge-yellow">-</span></div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <select id="triggers-date-sel" style="font-size:12px;padding:2px 6px" onchange="onTriggersDateChange()"><option value="">加载中...</option></select>
+        <!-- 触发事件面板（默认显示） -->
+        <div id="analysis-trigger-panel">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
             <span style="font-size:12px;color:var(--text2)">批次：</span>
-            <select id="triggers-run-sel" style="font-size:12px;padding:2px 6px" onchange="onTriggersRunChange()">
-              <option value="">加载中...</option>
-            </select>
-            <button id="btn-retrigger" class="btn btn-ghost" style="font-size:13px;padding:5px 14px;white-space:nowrap" onclick="retriggerOnly()">⚡ 重新触发</button>
+            <select id="triggers-run-sel" style="font-size:12px;padding:2px 6px" onchange="onTriggersRunChange()"><option value="">加载中...</option></select>
           </div>
+          <div id="triggers-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
         </div>
-        <div id="triggers-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+        <!-- 精选股票面板（默认隐藏） -->
+        <div id="analysis-picks-panel" style="display:none">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span style="font-size:12px;color:var(--text2)">批次：</span>
+            <select id="picks-run-sel" style="font-size:12px;padding:2px 6px" onchange="onPicksRunChange()"><option value="">加载中...</option></select>
+          </div>
+          <div id="picks-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+        </div>
       </div>
     </div>
 
@@ -449,6 +459,52 @@ body.mobile-nav #topbar{padding:10px 12px}
         <div class="card">
           <div class="card-title">📄 复盘报告</div>
           <div id="review-content" class="md-content" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ CRITIC ════ -->
+    <div class="page" id="page-critic">
+      <div class="page-scroll">
+        <div class="section-header">
+          <div class="section-title">🔬 批评报告 · <span id="critic-date-label" class="badge badge-blue"></span></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="critic-date-sel" style="margin:0" onchange="onCriticDateChange()"><option value="">选择日期</option></select>
+            <span style="font-size:12px;color:var(--text2)">批次：</span>
+            <select id="critic-run-sel" style="font-size:12px;padding:2px 6px" onchange="onCriticRunChange()">
+              <option value="">加载中...</option>
+            </select>
+            <button id="btn-critic" class="btn btn-primary" style="font-size:13px;padding:5px 14px;white-space:nowrap" onclick="triggerCritic()">▶ 运行批评</button>
+          </div>
+        </div>
+        <!-- 统计卡片 -->
+        <div id="critic-stats" class="grid-4" style="margin-bottom:16px"></div>
+        <!-- 个股表现 -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">📊 个股表现</div>
+          <div class="table-wrap" style="margin-top:8px">
+            <table id="critic-perf-table">
+              <thead><tr>
+                <th>排名</th><th>股票</th><th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th>D6</th><th>总分</th><th>当日涨跌%</th><th>相对大盘</th>
+              </tr></thead>
+              <tbody id="critic-perf-body"><tr><td colspan="11"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- 批评分析 -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">🧐 批评分析</div>
+          <div id="critic-analysis" class="md-content" style="margin-top:8px"></div>
+        </div>
+        <!-- 建议Prompt -->
+        <div class="card" id="critic-prompt-card" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div class="card-title" style="margin:0">💡 建议改进 Prompt</div>
+            <span id="critic-prompt-src-badge" class="badge" style="font-size:11px"></span>
+            <span id="critic-prompt-status-badge" class="badge" style="font-size:11px"></span>
+            <button id="btn-rollback" class="btn btn-ghost" style="font-size:12px;padding:3px 10px;margin-left:auto" onclick="rollbackPrompt()">↩ 回滚到上一版本</button>
+          </div>
+          <pre id="critic-prompt-content" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;font-family:'Cascadia Code',Consolas,monospace;color:var(--text);white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto;margin:0"></pre>
         </div>
       </div>
     </div>
@@ -552,15 +608,26 @@ body.mobile-nav #topbar{padding:10px 12px}
           <button id="ptab-trigger"  class="btn btn-primary" onclick="selectPromptAgent('trigger')">⚡ 触发检测</button>
           <button id="ptab-screener" class="btn btn-ghost"   onclick="selectPromptAgent('screener')">🏆 股票筛选</button>
           <button id="ptab-review"   class="btn btn-ghost"   onclick="selectPromptAgent('review')">📋 市场复盘</button>
+          <button id="ptab-critic"   class="btn btn-ghost"   onclick="selectPromptAgent('critic')">🔬 批评分析</button>
         </div>
         <!-- 编辑区 -->
         <div class="card" style="margin-bottom:20px">
           <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text)">当前激活提示词</div>
+          <!-- 配置说明（由 JS 动态填充） -->
+          <div id="prompt-meta-box" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;line-height:1.9;color:var(--text2)"></div>
           <textarea id="prompt-editor" rows="16" style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;font-family:'Cascadia Code',Consolas,monospace;color:var(--text);line-height:1.6;resize:vertical"></textarea>
           <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
             <input id="prompt-note" type="text" placeholder="版本备注（可选）" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;color:var(--text)">
             <button class="btn btn-primary" onclick="savePromptVersion()" style="white-space:nowrap">保存为新版本</button>
           </div>
+        </div>
+        <!-- 固定输出格式只读预览 -->
+        <div class="card" id="prompt-output-format-card" style="display:none">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:13px;font-weight:600;color:var(--text)">🔒 系统固定输出格式</span>
+            <span class="badge badge-gray" style="font-size:11px">运行时自动追加，不纳入编辑</span>
+          </div>
+          <pre id="prompt-output-format-content" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;font-family:'Cascadia Code',Consolas,monospace;color:var(--text2);white-space:pre-wrap;word-break:break-all;max-height:250px;overflow-y:auto;margin:0"></pre>
         </div>
         <!-- 版本历史 -->
         <div class="card">
@@ -644,11 +711,13 @@ const S = {
   eventsPage: 1,
   triggerChart: null,
   newsChart: null,
+  reviewDate: null,
+  criticDate: null,
 };
 
 const PAGE_TITLES = {
-  dashboard:'控制台', picks:'精选股票', triggers:'触发事件',
-  review:'市场复盘', news:'新闻动态', logs:'运行日志',
+  dashboard:'控制台', picks:'选股分析',
+  review:'市场复盘', critic:'批评报告', news:'新闻动态', logs:'运行日志',
   events:'事件去重历史', prompts:'提示词管理', config:'系统配置',
   analyze:'个股分析',
 };
@@ -719,7 +788,6 @@ async function loadDates() {
   if (S.dates.length) S.date = S.dates[0];
   document.getElementById('date-selector').innerHTML = opts;
   document.getElementById('picks-date-sel').innerHTML = opts;
-  document.getElementById('triggers-date-sel').innerHTML = opts;
   document.getElementById('news-date-sel').innerHTML = opts;
 
   // 复盘日期选择器单独从有报告的日期里取，避免因新闻数据导致默认选今天但无报告
@@ -940,72 +1008,10 @@ function _pollScreenerStatus() {
 }
 
 // ═══════════════════════════════════════════════════════
-// TRIGGER ONLY (重新触发)
-// ═══════════════════════════════════════════════════════
-let _retriggerPollTimer = null;
-
-async function retriggerOnly() {
-  const btn = document.getElementById('btn-retrigger');
-  if (btn && btn.disabled) return;
-  const confirmed = await showConfirmDialog({
-    icon: '⚡',
-    title: '重新触发',
-    message: '将重新扫描当前新闻并刷新触发数据（不运行精筛），约需 1-3 分钟。',
-    warning: '将新增一次触发批次，Token 会有消耗。',
-    confirmText: '开始触发',
-  });
-  if (!confirmed) return;
-  try {
-    const r = await fetch('/api/run/trigger', {
-      method: 'POST',
-      headers: {'X-Auth-Token': getToken(), 'Content-Type': 'application/json'},
-      body: JSON.stringify({mode: 'trigger_only'}),
-    });
-    if (r.status === 409) { alert('分析正在运行中，请稍候...'); return; }
-    if (!r.ok) { const d = await r.json(); alert('启动失败: ' + (d.detail||r.status)); return; }
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = '⏳ 触发中...';
-      btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
-    }
-    _pollRetriggerStatus();
-  } catch(e) { alert('请求失败: ' + e); }
-}
-
-function _pollRetriggerStatus() {
-  if (_retriggerPollTimer) clearTimeout(_retriggerPollTimer);
-  _retriggerPollTimer = setTimeout(async () => {
-    try {
-      const r = await fetch('/api/run/status', {headers: {'X-Auth-Token': getToken()}});
-      const d = await r.json();
-      const btn = document.getElementById('btn-retrigger');
-      if (d.running) {
-        _pollRetriggerStatus();
-      } else {
-        if (btn) {
-          btn.disabled = false;
-          btn.classList.remove('btn-primary'); btn.classList.add('btn-ghost');
-          if (d.status === 'success') {
-            btn.textContent = '✓ 触发完成';
-            setTimeout(() => { btn.textContent = '⚡ 重新触发'; }, 3000);
-            await loadDates();
-            loadTriggers();
-          } else if (d.status === 'error') {
-            btn.textContent = '✗ 触发失败';
-            setTimeout(() => { btn.textContent = '⚡ 重新触发'; }, 4000);
-            alert('触发失败:\n' + (d.error || '未知错误'));
-          } else {
-            btn.textContent = '⚡ 重新触发';
-          }
-        }
-      }
-    } catch(e) { _pollRetriggerStatus(); }
-  }, 3000);
-}
-
 function showTriggerForStock(triggerIndex) {
-  navigate('triggers');
-  // 等待 triggers 页渲染完成后高亮对应卡片
+  navigate('picks');
+  switchAnalysisTab('trigger');
+  // 等待 triggers 面板渲染完成后高亮对应卡片
   setTimeout(() => {
     const cards = document.querySelectorAll('#triggers-list .trigger-card');
     if (cards.length >= triggerIndex) {
@@ -1037,9 +1043,9 @@ function navigate(page) {
 function renderPage(page) {
   switch(page) {
     case 'dashboard': loadDashboard(); break;
-    case 'picks':     loadPicks(); break;
-    case 'triggers':  loadTriggers(); break;
+    case 'picks':     loadTriggers(); loadPicks(); break;
     case 'review':    loadReview(S.reviewDate || S.date); break;
+    case 'critic':    loadCritic(); break;
     case 'news':      loadNews(1); break;
     case 'logs':      loadLogs(1); break;
     case 'events':    loadEvents(1); break;
@@ -1254,9 +1260,24 @@ function drawDoughnutChart(canvasId, data) {
 // ═══════════════════════════════════════════════════════
 // PICKS (Screener Stocks)
 // ═══════════════════════════════════════════════════════
+let _analysisActiveTab = 'trigger'; // 记录当前激活的 Tab
+
+function switchAnalysisTab(tab) {
+  _analysisActiveTab = tab;
+  const isTrigger = tab === 'trigger';
+  document.getElementById('analysis-tab-trigger-btn').className = 'btn btn-sm' + (isTrigger ? ' btn-primary' : ' btn-ghost');
+  document.getElementById('analysis-tab-picks-btn').className   = 'btn btn-sm' + (isTrigger ? ' btn-ghost' : ' btn-primary');
+  document.getElementById('analysis-trigger-panel').style.display = isTrigger ? '' : 'none';
+  document.getElementById('analysis-picks-panel').style.display   = isTrigger ? 'none' : '';
+  // 懒加载：切换时加载目标面板数据
+  if (isTrigger) loadTriggers(); else loadPicks();
+}
+
 function onPicksDateChange() {
   const sel = document.getElementById('picks-date-sel');
   if (sel) S.date = sel.value;
+  // 两个面板都随日期刷新
+  loadTriggers();
   loadPicks();
 }
 
@@ -1375,21 +1396,14 @@ function toggleCard(id) {
 // ═══════════════════════════════════════════════════════
 // TRIGGERS
 // ═══════════════════════════════════════════════════════
-function onTriggersDateChange() {
-  const sel = document.getElementById('triggers-date-sel');
-  if (sel) S.date = sel.value;
-  loadTriggers();
-}
-
 async function onTriggersRunChange() {
   const runId = document.getElementById('triggers-run-sel').value;
   if (runId) await _loadTriggersByRunId(runId);
 }
 
 async function loadTriggers() {
-  const dsel = document.getElementById('triggers-date-sel');
-  if (dsel && dsel.value !== S.date && S.dates && S.dates.includes(S.date)) dsel.value = S.date;
-  document.getElementById('triggers-date-label').textContent = S.date || '-';
+  // 日期同步由 picks-date-sel 统一管理
+  document.getElementById('picks-date-label').textContent = S.date || '-';
   document.getElementById('triggers-list').innerHTML = loading();
 
   const runsData = await api(`/api/triggers/runs?date=${S.date}`);
@@ -1725,10 +1739,237 @@ async function loadEvents(page) {
 }
 
 // ═══════════════════════════════════════════════════════
+// CRITIC
+// ═══════════════════════════════════════════════════════
+let _criticPollTimer = null;
+let _criticReport = null;  // {suggested_prompt_id, previous_prompt_id, ...}
+
+async function loadCritic() {
+  // 填充日期选择器
+  const dsel = document.getElementById('critic-date-sel');
+  if (dsel.options.length <= 1) {
+    const dd = await api('/api/dates');
+    (dd.dates || []).forEach(d => {
+      const o = document.createElement('option'); o.value = o.textContent = d; dsel.appendChild(o);
+    });
+  }
+  // 默认选今日或最新
+  const today = new Date().toISOString().slice(0,10);
+  let date = S.criticDate;
+  if (!date) {
+    if ([...dsel.options].some(o => o.value === today)) date = today;
+    else if (dsel.options.length > 1) date = dsel.options[1].value;
+  }
+  if (date) { dsel.value = date; S.criticDate = date; }
+  await _loadCriticForDate(date);
+}
+
+async function onCriticDateChange() {
+  const sel = document.getElementById('critic-date-sel');
+  S.criticDate = sel.value;
+  await _loadCriticForDate(sel.value);
+}
+
+async function onCriticRunChange() {
+  const runId = document.getElementById('critic-run-sel').value;
+  if (runId && S.criticDate) await _renderCriticReport(S.criticDate, runId);
+}
+
+async function _loadCriticForDate(date) {
+  if (!date) return;
+  document.getElementById('critic-date-label').textContent = date;
+  // 加载批次列表
+  const rsel = document.getElementById('critic-run-sel');
+  rsel.innerHTML = '<option value="">加载中...</option>';
+  try {
+    const rd = await api(`/api/critic-reports/runs?date=${date}`);
+    const runs = rd.runs || [];
+    rsel.innerHTML = runs.length ? runs.map((r,i) => `<option value="${r}">${r}${i===0?' (最新)':''}</option>`).join('') : '<option value="">暂无批次</option>';
+    if (runs.length) await _renderCriticReport(date, runs[0]);
+    else _clearCriticPage();
+  } catch(e) {
+    rsel.innerHTML = '<option value="">加载失败</option>';
+    _clearCriticPage();
+  }
+  // 检查是否正在运行
+  const btn = document.getElementById('btn-critic');
+  try {
+    const s = await api('/api/run/critic/status');
+    if (s.running) { btn.disabled = true; btn.textContent = '运行中…'; _startCriticPoll(); }
+    else { btn.disabled = false; btn.textContent = '▶ 运行批评'; }
+  } catch(e) {}
+}
+
+async function _renderCriticReport(date, runId) {
+  // 加载报告
+  const rep = await api(`/api/critic-report?date=${date}&run_id=${runId}`);
+  _criticReport = rep;
+  // 统计卡片
+  const statsEl = document.getElementById('critic-stats');
+  if (rep && rep.run_date) {
+    const avgRet = rep.avg_pick_return != null ? rep.avg_pick_return.toFixed(2) : '--';
+    const mktAvg = rep.market_avg_return != null ? rep.market_avg_return.toFixed(2) : '--';
+    const beat = rep.beat_count ?? '--';
+    const miss = rep.miss_count ?? '--';
+    const total = (rep.beat_count ?? 0) + (rep.miss_count ?? 0);
+    statsEl.innerHTML = `
+      <div class="card stat-card"><div class="stat-label">平均收益</div><div class="stat-value" style="color:${parseFloat(avgRet)>=0?'var(--red)':'var(--green)'}">${avgRet}%</div></div>
+      <div class="card stat-card"><div class="stat-label">市场均值</div><div class="stat-value">${mktAvg}%</div></div>
+      <div class="card stat-card"><div class="stat-label">跑赢大盘</div><div class="stat-value" style="color:var(--red)">${beat}<span style="font-size:13px;color:var(--text2)">/${total}</span></div></div>
+      <div class="card stat-card"><div class="stat-label">跑输大盘</div><div class="stat-value" style="color:var(--green)">${miss}<span style="font-size:13px;color:var(--text2)">/${total}</span></div></div>
+    `;
+  } else {
+    statsEl.innerHTML = '';
+  }
+  // 批评分析
+  const analysisEl = document.getElementById('critic-analysis');
+  if (rep && rep.critique_markdown) {
+    analysisEl.innerHTML = typeof marked !== 'undefined' ? marked.parse(rep.critique_markdown) : `<pre>${rep.critique_markdown}</pre>`;
+  } else {
+    analysisEl.innerHTML = '<div class="empty">暂无批评分析</div>';
+  }
+  // 建议Prompt
+  const promptCard = document.getElementById('critic-prompt-card');
+  if (rep && rep.suggested_prompt) {
+    promptCard.style.display = '';
+    document.getElementById('critic-prompt-content').textContent = rep.suggested_prompt;
+    const srcBadge = document.getElementById('critic-prompt-src-badge');
+    srcBadge.textContent = `来源: critic · ${rep.run_date || ''}`;
+    srcBadge.className = 'badge badge-purple';
+    // 检查是否已激活
+    const statusBadge = document.getElementById('critic-prompt-status-badge');
+    if (rep.suggested_prompt_id) {
+      try {
+        const pr = await api(`/api/prompts/${rep.suggested_prompt_id}`);
+        if (pr.is_active) {
+          statusBadge.textContent = '已激活';
+          statusBadge.className = 'badge badge-green';
+        } else {
+          statusBadge.textContent = '未激活';
+          statusBadge.className = 'badge badge-gray';
+        }
+      } catch(e) { statusBadge.textContent = ''; }
+    } else { statusBadge.textContent = ''; }
+    // 回滚按钮
+    const rollbackBtn = document.getElementById('btn-rollback');
+    rollbackBtn.style.display = rep.previous_prompt_id ? '' : 'none';
+  } else {
+    promptCard.style.display = 'none';
+  }
+  // 个股表现
+  const perf = await api(`/api/critic-performance?date=${date}&run_id=${runId}`);
+  const items = perf.items || [];
+  const mktAvgVal = rep ? (rep.market_avg_return || 0) : 0;
+  document.getElementById('critic-perf-body').innerHTML = items.length ? items.map(s => {
+    const ret = s.pct_return != null ? s.pct_return : null;
+    const retStr = ret != null ? ret.toFixed(2) + '%' : (s.beat_market === -1 ? '停牌' : '--');
+    const retColor = ret != null ? (ret > 0 ? 'var(--red)' : ret < 0 ? 'var(--green)' : '') : 'var(--text2)';
+    const beatStr = s.beat_market === 1 ? '↑跑赢' : s.beat_market === 0 ? '↓跑输' : '-';
+    const beatColor = s.beat_market === 1 ? 'var(--red)' : s.beat_market === 0 ? 'var(--green)' : 'var(--text2)';
+    return `<tr>
+      <td style="text-align:center">${s.rank || '-'}</td>
+      <td><span class="badge badge-blue">${s.stock_code}</span> ${s.stock_name || ''}</td>
+      <td style="text-align:center">${s.d1_score ?? '-'}</td>
+      <td style="text-align:center">${s.d2_score ?? '-'}</td>
+      <td style="text-align:center">${s.d3_score ?? '-'}</td>
+      <td style="text-align:center">${s.d4_score ?? '-'}</td>
+      <td style="text-align:center">${s.d5_score ?? '-'}</td>
+      <td style="text-align:center">${s.d6_score ?? '-'}</td>
+      <td style="text-align:center"><strong>${s.total_score ?? '-'}</strong></td>
+      <td style="text-align:right;color:${retColor};font-weight:600">${retStr}</td>
+      <td style="text-align:center;color:${beatColor};font-size:12px">${beatStr}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="11"><div class="empty">暂无表现数据</div></td></tr>';
+}
+
+function _clearCriticPage() {
+  document.getElementById('critic-stats').innerHTML = '';
+  document.getElementById('critic-analysis').innerHTML = '<div class="empty">暂无批评分析</div>';
+  document.getElementById('critic-prompt-card').style.display = 'none';
+  document.getElementById('critic-perf-body').innerHTML = '<tr><td colspan="11"><div class="empty">暂无数据</div></td></tr>';
+}
+
+async function triggerCritic() {
+  const btn = document.getElementById('btn-critic');
+  btn.disabled = true; btn.textContent = '运行中…';
+  const date = S.criticDate || new Date().toISOString().slice(0,10);
+  try {
+    await api('/api/run/critic', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({date})});
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '▶ 运行批评';
+    alert('触发失败：' + (e.message || e)); return;
+  }
+  _startCriticPoll();
+}
+
+function _startCriticPoll() {
+  if (_criticPollTimer) return;
+  const btn = document.getElementById('btn-critic');
+  _criticPollTimer = setInterval(async () => {
+    const s = await api('/api/run/critic/status');
+    if (!s.running) {
+      clearInterval(_criticPollTimer); _criticPollTimer = null;
+      btn.disabled = false; btn.textContent = '▶ 运行批评';
+      if (s.status === 'success') {
+        await loadDates();
+        await _loadCriticForDate(S.criticDate || new Date().toISOString().slice(0,10));
+      } else {
+        alert('批评Agent失败：' + (s.error || '未知错误'));
+      }
+    }
+  }, 3000);
+}
+
+async function rollbackPrompt() {
+  if (!_criticReport || _criticReport.previous_prompt_id == null) return;
+  if (!confirm('确认回滚到上一版本的精筛 Prompt？')) return;
+  const pid = _criticReport.previous_prompt_id;
+  try {
+    await api(`/api/prompts/${pid}/activate`, {method: 'POST'});
+    alert('已回滚到上一版本 Prompt');
+    // 刷新状态徽章
+    const statusBadge = document.getElementById('critic-prompt-status-badge');
+    statusBadge.textContent = '已回滚（上一版本已激活）';
+    statusBadge.className = 'badge badge-gray';
+  } catch(e) {
+    alert('回滚失败：' + (e.message || e));
+  }
+}
+
+// ═══════════════════════════════════════════════════════
 // PROMPTS
 // ═══════════════════════════════════════════════════════
 let _promptsData = [];
 let _currentPromptAgent = 'trigger';
+let _promptHistoryPage = 1;
+const _PROMPT_HISTORY_PAGE_SIZE = 20;
+
+const PROMPT_META = {
+  trigger: {
+    editable: '触发事件识别规则（C1政策/C4涨价/C6转折的判断标准）、新鲜度评估逻辑、注意事项',
+    forbidden: 'JSON字段名（has_triggers、triggers数组、summary等结构字段）、输出层级',
+    autoAppend: '系统自动追加 JSON 格式模板（triggers数组完整结构）',
+    criticManaged: false,
+  },
+  screener: {
+    editable: 'D1-D6 各维度的评分标准文字、注意事项示例、典型行业/企业案例说明',
+    forbidden: '维度名称（D1_龙头地位等6个维度名不可改）、0-3分制评分范围',
+    autoAppend: '系统自动追加 JSON 格式模板（top20数组完整结构）',
+    criticManaged: true,
+  },
+  review: {
+    editable: '各复盘章节的分析任务描述（今日概况/热点/验证/发现/展望/周总结的侧重点）',
+    forbidden: '章节编号和标题（1.今日市场概况等6个固定标题）、判断原则4条',
+    autoAppend: '系统自动追加 Markdown 结构模板（各章节标题 + 判断原则）',
+    criticManaged: false,
+  },
+  critic: {
+    editable: '批评报告各章节的分析要求（概况/排行/维度准确性/系统偏差/改进建议的分析深度）',
+    forbidden: '---SUGGESTED_PROMPT_BELOW--- 分隔符（必须保留，后端解析依赖此字符串）',
+    autoAppend: '系统自动追加第二部分输出约束（D1-D6结构约束、输出格式限制）',
+    criticManaged: false,
+  },
+};
 
 async function loadPrompts() {
   const d = await api('/api/prompts');
@@ -1738,7 +1979,8 @@ async function loadPrompts() {
 
 function selectPromptAgent(agent) {
   _currentPromptAgent = agent;
-  ['trigger','screener','review'].forEach(a => {
+  _promptHistoryPage = 1; // 切换 agent 时重置到第一页
+  ['trigger','screener','review','critic'].forEach(a => {
     const btn = document.getElementById('ptab-' + a);
     if (btn) btn.className = 'btn ' + (a === agent ? 'btn-primary' : 'btn-ghost');
   });
@@ -1746,6 +1988,16 @@ function selectPromptAgent(agent) {
 }
 
 async function _renderPromptAgent(agent) {
+  // 渲染配置说明面板
+  const meta = PROMPT_META[agent] || {};
+  document.getElementById('prompt-meta-box').innerHTML =
+    `<div style="margin-bottom:4px;font-weight:600;color:var(--text)">📋 配置说明</div>` +
+    `<div>✅ <b>可编辑</b>：${meta.editable || ''}</div>` +
+    `<div>❌ <b>禁止修改</b>：${meta.forbidden || ''}</div>` +
+    `<div>🔒 <b>系统自动追加</b>：${meta.autoAppend || ''}` +
+    (meta.criticManaged ? `&nbsp;&nbsp;<span class="badge badge-purple" style="font-size:11px">Critic Agent 可自动改进</span>` : '') +
+    `</div>`;
+
   const list = _promptsData.filter(p => p.agent_name === agent && p.prompt_name === 'system_prompt');
   // Fill editor with active prompt full content
   const active = list.find(p => p.is_active) || list[0];
@@ -1757,38 +2009,76 @@ async function _renderPromptAgent(agent) {
   }
   document.getElementById('prompt-note').value = '';
 
-  // Render history table
+  // Render history table with pagination
   if (!list.length) {
     document.getElementById('prompt-history').innerHTML = empty('暂无版本记录');
     return;
   }
+  _renderPromptHistory(list, _promptHistoryPage);
+
+  // 渲染 output_format 只读预览
+  const fmtEntry = _promptsData.find(p => p.agent_name === agent && p.prompt_name === 'output_format');
+  const fmtCard = document.getElementById('prompt-output-format-card');
+  const fmtContent = document.getElementById('prompt-output-format-content');
+  if (fmtEntry) {
+    const fmtFull = await api(`/api/prompts/${fmtEntry.id}`);
+    fmtContent.textContent = fmtFull.content || '';
+    fmtCard.style.display = '';
+  } else {
+    fmtCard.style.display = 'none';
+  }
+}
+
+function _renderPromptHistory(list, page) {
+  const total = list.length;
+  const totalPages = Math.ceil(total / _PROMPT_HISTORY_PAGE_SIZE);
+  const p = Math.max(1, Math.min(page, totalPages));
+  const pageItems = list.slice((p - 1) * _PROMPT_HISTORY_PAGE_SIZE, p * _PROMPT_HISTORY_PAGE_SIZE);
+
+  const rows = pageItems.map(pr => `<tr style="border-bottom:1px solid var(--border)">
+    <td style="padding:8px 10px;font-size:12px"><span class="badge badge-blue">${pr.version}</span></td>
+    <td style="padding:8px 10px;font-size:12px;color:var(--text2)">${pr.created_at || ''}</td>
+    <td style="padding:8px 10px;font-size:12px;color:var(--text2);text-align:right">${pr.content_length || 0}</td>
+    <td style="padding:8px 10px;font-size:12px">
+      ${pr.source === 'system'
+        ? '<span class="badge badge-gray" style="font-size:11px">🔒 系统固定</span>'
+        : `<span class="badge ${pr.source === 'critic' ? 'badge-purple' : 'badge-gray'}" style="font-size:11px">${pr.source || 'human'}</span>`}
+    </td>
+    <td style="padding:8px 10px;font-size:12px;color:var(--text2)">${pr.note || ''}</td>
+    <td style="padding:8px 10px">
+      ${pr.source === 'system'
+        ? '<span class="badge badge-gray" style="font-size:11px">不可修改</span>'
+        : pr.is_active
+          ? '<span class="badge badge-green">当前版本</span>'
+          : `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="activatePromptVersion(${pr.id})">激活</button>`}
+    </td>
+    <td style="padding:8px 10px;text-align:center">
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="previewPromptVersion(${pr.id})">查看</button>
+    </td>
+  </tr>`).join('');
+
+  const pager = totalPages > 1 ? `
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:10px;font-size:12px;color:var(--text2)">
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" ${p <= 1 ? 'disabled' : ''}
+        onclick="_promptHistoryPage=${p-1};_renderPromptHistory(_promptsData.filter(x=>x.agent_name==='${_currentPromptAgent}'&&x.prompt_name==='system_prompt'),_promptHistoryPage)">‹ 上一页</button>
+      <span>第 ${p} / ${totalPages} 页（共 ${total} 条）</span>
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" ${p >= totalPages ? 'disabled' : ''}
+        onclick="_promptHistoryPage=${p+1};_renderPromptHistory(_promptsData.filter(x=>x.agent_name==='${_currentPromptAgent}'&&x.prompt_name==='system_prompt'),_promptHistoryPage)">下一页 ›</button>
+    </div>` : '';
+
   document.getElementById('prompt-history').innerHTML = `
     <table style="width:100%;border-collapse:collapse">
       <thead><tr style="border-bottom:1px solid var(--border)">
         <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">版本</th>
         <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">保存时间</th>
         <th style="text-align:right;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">字符数</th>
+        <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">来源</th>
         <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">备注</th>
         <th style="text-align:left;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">状态</th>
         <th style="text-align:center;padding:8px 10px;font-size:12px;color:var(--text3);font-weight:500">操作</th>
       </tr></thead>
-      <tbody>
-        ${list.map(p => `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px 10px;font-size:12px"><span class="badge badge-blue">${p.version}</span></td>
-          <td style="padding:8px 10px;font-size:12px;color:var(--text2)">${p.created_at || ''}</td>
-          <td style="padding:8px 10px;font-size:12px;color:var(--text2);text-align:right">${p.content_length || 0}</td>
-          <td style="padding:8px 10px;font-size:12px;color:var(--text2)">${p.note || ''}</td>
-          <td style="padding:8px 10px">
-            ${p.is_active
-              ? '<span class="badge badge-green">当前版本</span>'
-              : `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="activatePromptVersion(${p.id})">激活</button>`}
-          </td>
-          <td style="padding:8px 10px;text-align:center">
-            <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="previewPromptVersion(${p.id})">查看</button>
-          </td>
-        </tr>`).join('')}
-      </tbody>
-    </table>`;
+      <tbody>${rows}</tbody>
+    </table>${pager}`;
 }
 
 async function savePromptVersion() {
@@ -1841,12 +2131,15 @@ function _renderScheduleConfigCard(items) {
   const DAYS = [{v:'1',l:'周一'},{v:'2',l:'周二'},{v:'3',l:'周三'},{v:'4',l:'周四'},{v:'5',l:'周五'},{v:'6',l:'周六'},{v:'7',l:'周日'}];
   const triggerDaySet = new Set((val('schedule_trigger_days')||'').split(',').map(s=>s.trim()).filter(Boolean));
   const reviewDaySet  = new Set((val('schedule_review_days') ||'').split(',').map(s=>s.trim()).filter(Boolean));
+  const criticDaySet  = new Set((val('schedule_critic_days') ||'').split(',').map(s=>s.trim()).filter(Boolean));
 
   const dayCheckboxes = (id, checkedSet) => DAYS.map(d => `
     <label style="display:inline-flex;align-items:center;gap:4px;margin:4px 10px 4px 0;font-size:13px;cursor:pointer">
       <input type="checkbox" id="sched-${id}-day-${d.v}" ${checkedSet.has(d.v)?'checked':''} style="accent-color:var(--green)">
       ${d.l}
     </label>`).join('');
+
+  const daySetFor = id => ({trigger:triggerDaySet, review:reviewDaySet, critic:criticDaySet}[id] || new Set());
 
   const timeRow = (id, labelText, hourKey, minuteKey) => {
     const h = parseInt(val(hourKey)||'9');
@@ -1863,7 +2156,7 @@ function _renderScheduleConfigCard(items) {
           <select id="sched-${id}-min"  style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px">${minOpts}</select>
           <span style="font-size:13px;color:var(--text2);margin-left:10px">执行日期</span>
         </div>
-        <div style="margin-top:8px">${dayCheckboxes(id, id==='trigger'?triggerDaySet:reviewDaySet)}</div>
+        <div style="margin-top:8px">${dayCheckboxes(id, daySetFor(id))}</div>
       </div>`;
   };
 
@@ -1877,6 +2170,9 @@ function _renderScheduleConfigCard(items) {
     </div>
     <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
       ${timeRow('review','收盘复盘','schedule_review_hour','schedule_review_minute')}
+    </div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      ${timeRow('critic','批评Agent','schedule_critic_hour','schedule_critic_minute')}
     </div>
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
       <div style="font-size:12px;color:var(--text3);font-weight:500;white-space:nowrap">🗂️ 日志保留</div>
@@ -1935,7 +2231,7 @@ async function loadConfig() {
   const items = d.items || [];
   if (!items.length) { document.getElementById('config-list').innerHTML = empty('暂无配置项'); return; }
 
-  const SPECIAL_KEYS = new Set(['screener_news_sources','screener_news_lookback_hours','analyst_news_sources','analyst_news_lookback_hours','schedule_trigger_hour','schedule_trigger_minute','schedule_trigger_days','schedule_review_hour','schedule_review_minute','schedule_review_days','log_retention_days']);
+  const SPECIAL_KEYS = new Set(['screener_news_sources','screener_news_lookback_hours','analyst_news_sources','analyst_news_lookback_hours','schedule_trigger_hour','schedule_trigger_minute','schedule_trigger_days','schedule_review_hour','schedule_review_minute','schedule_review_days','schedule_critic_hour','schedule_critic_minute','schedule_critic_days','log_retention_days']);
   const generalItems = items.filter(c => !SPECIAL_KEYS.has(c.key));
 
   const get = key => items.find(c => c.key === key);
@@ -1998,6 +2294,9 @@ async function saveScheduleConfig() {
     ['schedule_review_hour',    document.getElementById('sched-review-hour').value],
     ['schedule_review_minute',  document.getElementById('sched-review-min').value],
     ['schedule_review_days',    getCheckedDays('review')],
+    ['schedule_critic_hour',    document.getElementById('sched-critic-hour').value],
+    ['schedule_critic_minute',  document.getElementById('sched-critic-min').value],
+    ['schedule_critic_days',    getCheckedDays('critic')],
     ['log_retention_days',      document.getElementById('sched-log-retention').value],
   ];
   try {

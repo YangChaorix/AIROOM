@@ -80,6 +80,7 @@ _scheduler: BackgroundScheduler = None
 SCHEDULE_KEYS = {
     "schedule_trigger_hour", "schedule_trigger_minute", "schedule_trigger_days",
     "schedule_review_hour",  "schedule_review_minute",  "schedule_review_days",
+    "schedule_critic_hour",  "schedule_critic_minute",  "schedule_critic_days",
 }
 
 
@@ -95,6 +96,9 @@ def _get_schedule_cfg() -> dict:
         "review_hour":    _int("schedule_review_hour",    15),
         "review_minute":  _int("schedule_review_minute",  35),
         "review_days":    _days("schedule_review_days",   "1,2,3,4,5"),
+        "critic_hour":    _int("schedule_critic_hour",    15),
+        "critic_minute":  _int("schedule_critic_minute",  40),
+        "critic_days":    _days("schedule_critic_days",   "1,2,3,4,5"),
     }
 
 
@@ -122,9 +126,22 @@ def _build_scheduler() -> BackgroundScheduler:
         except Exception as e:
             logger.error(f"[定时任务] 复盘 异常: {e}", exc_info=True)
 
+    def job_critic():
+        logger.info("[定时任务] 批评Agent 启动")
+        try:
+            from graph.workflow import run_critic_workflow
+            result = run_critic_workflow(trigger_mode="auto")
+            cr = result.get("critic_result") or {}
+            logger.info(
+                f"[定时任务] 批评Agent 完成 — 平均收益: {cr.get('avg_pick_return')}%, "
+                f"跑赢: {cr.get('beat_count')}, 跑输: {cr.get('miss_count')}"
+            )
+        except Exception as e:
+            logger.error(f"[定时任务] 批评Agent 异常: {e}", exc_info=True)
+
     def job_clean_logs():
         try:
-            retention = int(agent_db.get_config("log_retention_days", 3) or 3)
+            retention = int(agent_db.get_config("log_retention_days", 3))
             if retention <= 0:
                 return
             log_dir = os.path.join(BASE_DIR, "logs")
@@ -182,6 +199,13 @@ def _build_scheduler() -> BackgroundScheduler:
         name=f"新闻采集（{schedule_hours}点，每{schedule_interval}分钟）",
     )
     sched.add_job(
+        job_critic, "cron",
+        hour=cfg["critic_hour"], minute=cfg["critic_minute"],
+        day_of_week=cfg["critic_days"],
+        id="critic_job",
+        name=f"批评Agent（{cfg['critic_hour']:02d}:{cfg['critic_minute']:02d} 周{cfg['critic_days'] or '每天'}）",
+    )
+    sched.add_job(
         job_clean_logs, "cron",
         hour=1, minute=0,
         id="clean_logs_job",
@@ -191,6 +215,7 @@ def _build_scheduler() -> BackgroundScheduler:
     logger.info(
         f"[调度器] jobs 已注册 — morning_job: {cfg['trigger_hour']:02d}:{cfg['trigger_minute']:02d} 周{cfg['trigger_days'] or '每天'}"
         f" | review_job: {cfg['review_hour']:02d}:{cfg['review_minute']:02d} 周{cfg['review_days'] or '每天'}"
+        f" | critic_job: {cfg['critic_hour']:02d}:{cfg['critic_minute']:02d} 周{cfg['critic_days'] or '每天'}"
         f" | collect_job: {schedule_hours}点 每{schedule_interval}min | clean_logs_job: 01:00每天"
     )
     return sched
@@ -208,9 +233,15 @@ def _reschedule_jobs(sched: BackgroundScheduler) -> None:
         hour=cfg["review_hour"], minute=cfg["review_minute"],
         day_of_week=cfg["review_days"],
     )
+    sched.reschedule_job(
+        "critic_job", trigger="cron",
+        hour=cfg["critic_hour"], minute=cfg["critic_minute"],
+        day_of_week=cfg["critic_days"],
+    )
     logger.info(
         f"[热更新] morning_job → {cfg['trigger_hour']:02d}:{cfg['trigger_minute']:02d} 周{cfg['trigger_days'] or '每天'}"
         f" | review_job → {cfg['review_hour']:02d}:{cfg['review_minute']:02d} 周{cfg['review_days'] or '每天'}"
+        f" | critic_job → {cfg['critic_hour']:02d}:{cfg['critic_minute']:02d} 周{cfg['critic_days'] or '每天'}"
     )
 
 
@@ -219,6 +250,7 @@ _run_state = {"running": False, "started_at": None, "finished_at": None, "status
 _collect_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
 _review_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
 _screener_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
+_critic_state = {"running": False, "started_at": None, "finished_at": None, "status": "idle", "error": None}
 
 
 @asynccontextmanager
@@ -629,14 +661,21 @@ def api_create_prompt(payload: dict = Body(...)):
     note        = (payload.get("note") or "").strip()
     if not agent_name or not prompt_name or not content:
         raise HTTPException(400, "agent_name, prompt_name, content are required")
-    if agent_name not in ("trigger", "screener", "review"):
+    if agent_name not in ("trigger", "screener", "review", "critic"):
         raise HTTPException(400, f"Unknown agent: {agent_name}")
+    if prompt_name == "output_format":
+        raise HTTPException(400, "output_format 为系统固定模板，不允许通过 API 修改")
     new_id = agent_db.save_prompt(agent_name, prompt_name, content, note=note)
     return query_db("SELECT * FROM prompts WHERE id=?", (new_id,), fetchall=False)
 
 
 @app.post("/api/prompts/{prompt_id}/activate", dependencies=[AUTH])
 def api_activate_prompt(prompt_id: int):
+    row = query_db("SELECT source, prompt_name FROM prompts WHERE id=?", (prompt_id,), fetchall=False)
+    if not row:
+        raise HTTPException(404, f"Prompt {prompt_id} not found")
+    if row.get("source") == "system" or row.get("prompt_name") == "output_format":
+        raise HTTPException(400, "output_format 为系统固定模板，不允许激活操作")
     ok = agent_db.activate_prompt(prompt_id)
     if not ok:
         raise HTTPException(404, f"Prompt {prompt_id} not found")
@@ -876,6 +915,89 @@ def api_news_collect():
 @app.get("/api/news/collect/status", dependencies=[AUTH])
 def api_news_collect_status():
     return dict(_collect_state)
+
+
+# ── Critic Agent ───────────────────────────────────────────────────────────────
+def _do_critic(run_date: str = None):
+    _critic_state["running"] = True
+    _critic_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+    _critic_state["finished_at"] = None
+    _critic_state["error"] = None
+    _critic_state["status"] = "running"
+    try:
+        from graph.workflow import run_critic_workflow
+        result = run_critic_workflow(run_date=run_date, trigger_mode="manual")
+        cr = result.get("critic_result") or {}
+        if cr.get("error"):
+            _critic_state["status"] = "error"
+            _critic_state["error"] = cr["error"]
+        else:
+            _critic_state["status"] = "success"
+    except Exception as e:
+        _critic_state["status"] = "error"
+        _critic_state["error"] = str(e)
+    finally:
+        _critic_state["running"] = False
+        _critic_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
+
+
+@app.post("/api/run/critic", dependencies=[AUTH])
+def api_run_critic(body: dict = Body({})):
+    if _critic_state["running"]:
+        raise HTTPException(status_code=409, detail="Critic already running")
+    run_date = (body.get("date") or "").strip() or None
+    _critic_state["running"] = True
+    _critic_state["status"] = "running"
+    _critic_state["error"] = None
+    _critic_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+    _critic_state["finished_at"] = None
+    t = threading.Thread(target=_do_critic, kwargs={"run_date": run_date}, daemon=True)
+    t.start()
+    return {"message": "Critic started", "started_at": _critic_state["started_at"]}
+
+
+@app.get("/api/run/critic/status", dependencies=[AUTH])
+def api_run_critic_status():
+    return dict(_critic_state)
+
+
+@app.get("/api/critic-reports/runs", dependencies=[AUTH])
+def api_critic_runs(date: Optional[str] = Query(None)):
+    if not date:
+        raise HTTPException(400, "date is required")
+    return {"runs": agent_db.get_critic_run_ids(date)}
+
+
+@app.get("/api/critic-report", dependencies=[AUTH])
+def api_critic_report(date: Optional[str] = Query(None), run_id: Optional[str] = Query(None)):
+    if not date:
+        # 取全局最新
+        row = query_db(
+            "SELECT run_date FROM critic_reports ORDER BY run_date DESC, id DESC LIMIT 1",
+            fetchall=False,
+        )
+        if not row:
+            return {}
+        date = row["run_date"]
+    report = agent_db.get_critic_report(date, run_id=run_id)
+    return report or {}
+
+
+@app.get("/api/critic-performance", dependencies=[AUTH])
+def api_critic_performance(date: Optional[str] = Query(None), run_id: Optional[str] = Query(None)):
+    if not date:
+        raise HTTPException(400, "date is required")
+    if not run_id:
+        # 取当日最新批次
+        runs = agent_db.get_critic_run_ids(date)
+        if not runs:
+            return {"items": []}
+        run_id = runs[0]
+    rows = query_db(
+        "SELECT * FROM critic_stock_performance WHERE run_date=? AND critic_run_id=? ORDER BY rank",
+        (date, run_id),
+    )
+    return {"items": rows}
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
