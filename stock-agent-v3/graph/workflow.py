@@ -8,7 +8,7 @@ START → trigger_node → [has_triggers?]
                               ↓ No
                        review_node → END
 
-run_mode: 'full' | 'trigger_only' | 'review_only' | 'critic_only'
+run_mode: 'picks_only' | 'review_only' | 'critic_only'
 v1.1: WorkflowState 新增 search_results 字段用于传递 Web 搜索结果
 v1.2: WorkflowState 新增 critic_result 字段；新增 run_critic_workflow() 独立函数
 """
@@ -99,7 +99,8 @@ def screener_node(state: WorkflowState) -> WorkflowState:
 
 def review_node(state: WorkflowState) -> WorkflowState:
     """复盘Agent节点"""
-    if state["run_mode"].split(":")[0] == "trigger_only":
+    # picks_only 模式跳过复盘
+    if state["run_mode"].split(":")[0] == "picks_only":
         return {**state, "review_result": None}
     try:
         # 优先从当前 state 取，否则从 DB 加载当日数据
@@ -120,14 +121,9 @@ def review_node(state: WorkflowState) -> WorkflowState:
 def route_after_trigger(state: WorkflowState) -> Literal["screener_node", "review_node"]:
     """
     触发后路由：
-    - trigger_only 模式 → 直接到 review_node（但 review_node 会跳过）
     - 有触发 → screener_node
     - 无触发 → review_node（仅复盘）
     """
-    run_mode = state.get("run_mode", "full").split(":")[0]
-    if run_mode == "trigger_only":
-        return "review_node"
-
     trigger_result = state.get("trigger_result") or {}
     if trigger_result.get("has_triggers"):
         return "screener_node"

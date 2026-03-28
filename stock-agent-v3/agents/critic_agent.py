@@ -299,14 +299,17 @@ def run_critic_agent(run_date: str = None) -> dict:
     db.save_critic_performance(today, critic_run_id, perf_list)
     logger.info(f"[批评Agent] 已保存批评报告 run_id={critic_run_id}，前版本 id={previous_prompt_id}")
 
-    # ── 9. 保存改进 Prompt（是否自动激活由 CRITIC_SCREENER_AUTO_ACTIVATE 控制）──
-    auto_activate = os.getenv("CRITIC_SCREENER_AUTO_ACTIVATE", "false").strip().lower() == "true"
+    # ── 9. 保存改进 Prompt（是否自动激活由环境变量或系统配置控制）──
+    auto_activate = os.getenv(
+        "CRITIC_SCREENER_AUTO_ACTIVATE",
+        db.get_config("critic_screener_auto_activate", "false")
+    ).strip().lower() == "true"
     suggested_prompt_id = None
     if suggested_prompt:
         try:
             suggested_prompt_id = db.save_prompt(
                 "screener", "system_prompt", suggested_prompt,
-                note=f"Critic自动生成 | {today}{'（已激活）' if auto_activate else '（待审核）'}",
+                note=f"Critic自动生成 | {today}{'（已激活）' if auto_activate else ''}",
                 active=auto_activate,
                 source="critic",
             )

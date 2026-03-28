@@ -484,8 +484,10 @@ def run_screener_agent(trigger_result: dict) -> dict:
     # 保存精筛结果到 DB（v1.2 新增）
     try:
         from tools.db import db
-        db.save_screener(today, result.get("top20", []))
-        logger.debug(f"精筛结果已写入 DB：{len(result.get('top20', []))} 条")
+        active_prompt = db.get_active_prompt_row("screener", "system_prompt")
+        prompt_id = active_prompt.get("id") if active_prompt else None
+        db.save_screener(today, result.get("top20", []), prompt_id=prompt_id)
+        logger.debug(f"精筛结果已写入 DB：{len(result.get('top20', []))} 条 prompt_id={prompt_id}")
     except Exception as e:
         logger.warning(f"DB save_screener 失败（不影响主流程）: {e}")
 

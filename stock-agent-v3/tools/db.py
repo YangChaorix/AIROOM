@@ -68,17 +68,21 @@ CREATE INDEX IF NOT EXISTS idx_screener_run ON screener_stocks(run_date, run_id)
 CREATE INDEX IF NOT EXISTS idx_screener_code ON screener_stocks(stock_code);
 
 CREATE TABLE IF NOT EXISTS review_reports (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_date          TEXT NOT NULL,
-    run_id            TEXT NOT NULL DEFAULT '',
-    markdown_content  TEXT,
-    market_up_count   INTEGER,
-    market_down_count INTEGER,
-    avg_pct_change    REAL,
-    market_sentiment  TEXT,
-    top_sectors       TEXT,
-    is_friday         INTEGER,
-    created_at        TEXT NOT NULL
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_date                    TEXT NOT NULL,
+    run_id                      TEXT NOT NULL DEFAULT '',
+    markdown_content            TEXT,
+    market_up_count             INTEGER,
+    market_down_count           INTEGER,
+    avg_pct_change              REAL,
+    market_sentiment            TEXT,
+    top_sectors                 TEXT,
+    is_friday                   INTEGER,
+    suggested_trigger_prompt    TEXT,
+    suggested_trigger_prompt_id INTEGER,
+    previous_trigger_prompt_id  INTEGER,
+    trigger_review_markdown     TEXT,
+    created_at                  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS news_items (
@@ -203,6 +207,9 @@ _DEFAULT_CONFIGS = [
     ("schedule_critic_minute",       "40", "number", "批评Agent执行分钟",      "批评Agent执行分钟（0-59）"),
     ("schedule_critic_days",         "1,2,3,4,5", "text", "批评Agent执行日",   "周几执行，逗号分隔：1=周一…7=周日；空=每天"),
     ("log_retention_days",           "3",          "number", "日志保留天数",    "自动清理超出天数的日志文件，0=不清理"),
+    ("news_retention_days",          "90",         "number", "新闻保留天数",    "自动清理超出天数的新闻记录（默认90天约3个月），0=不清理"),
+    ("critic_screener_auto_activate","false",      "text",   "批评Agent自动激活精筛Prompt", "批评Agent生成的改进精筛Prompt是否自动激活；true=自动激活，false=待人工审核"),
+    ("review_trigger_auto_activate", "false",      "text",   "复盘Agent自动激活触发Prompt", "复盘Agent生成的触发检测改进Prompt是否自动激活；true=自动激活，false=待人工审核"),
 ]
 
 
@@ -334,6 +341,25 @@ class StockAgentDB:
                 except Exception:
                     pass
             conn.commit()
+            # 迁移：triggers / screener_stocks 加 prompt_id 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(triggers)").fetchall()]
+            if "prompt_id" not in cols:
+                conn.execute("ALTER TABLE triggers ADD COLUMN prompt_id INTEGER")
+                conn.commit()
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(screener_stocks)").fetchall()]
+            if "prompt_id" not in cols:
+                conn.execute("ALTER TABLE screener_stocks ADD COLUMN prompt_id INTEGER")
+                conn.commit()
+            # 迁移：review_reports 加 suggested_trigger_prompt* 列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(review_reports)").fetchall()]
+            if "suggested_trigger_prompt_id" not in cols:
+                conn.execute("ALTER TABLE review_reports ADD COLUMN suggested_trigger_prompt TEXT")
+                conn.execute("ALTER TABLE review_reports ADD COLUMN suggested_trigger_prompt_id INTEGER")
+                conn.execute("ALTER TABLE review_reports ADD COLUMN previous_trigger_prompt_id INTEGER")
+                conn.commit()
+            if "trigger_review_markdown" not in cols:
+                conn.execute("ALTER TABLE review_reports ADD COLUMN trigger_review_markdown TEXT")
+                conn.commit()
             # 迁移：prompts 加 source 列
             cols = [r[1] for r in conn.execute("PRAGMA table_info(prompts)").fetchall()]
             if "source" not in cols:
@@ -500,7 +526,7 @@ class StockAgentDB:
 
     # ── triggers ──────────────────────────────────────────────────────────────
 
-    def save_triggers(self, run_date: str, triggers: list) -> None:
+    def save_triggers(self, run_date: str, triggers: list, prompt_id: int = None) -> None:
         """保存当日触发信号（追加写，每次生成新 run_id）"""
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         run_id = created_at  # 同一批次共用同一个时间戳
@@ -509,8 +535,8 @@ class StockAgentDB:
                 conn.execute(
                     """INSERT INTO triggers
                        (run_date, run_id, trigger_index, trigger_type, summary, industries,
-                        companies, strength, freshness, freshness_reason, caution, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        companies, strength, freshness, freshness_reason, caution, created_at, prompt_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         run_date, run_id, i + 1,
                         t.get("type", ""),
@@ -522,18 +548,25 @@ class StockAgentDB:
                         t.get("freshness_reason", ""),
                         t.get("caution", ""),
                         created_at,
+                        prompt_id,
                     ),
                 )
         logger.debug(f"save_triggers: {run_date} run_id={run_id} 写入 {len(triggers)} 条")
 
     def get_trigger_run_ids(self, run_date: str) -> list:
-        """返回某日所有触发批次 run_id，按时间倒序"""
+        """返回某日所有触发批次，携带 prompt 版本信息，按时间倒序"""
         with self.get_conn() as conn:
             rows = conn.execute(
-                "SELECT DISTINCT run_id FROM triggers WHERE run_date=? ORDER BY run_id DESC",
+                """SELECT t.run_id, p.version, p.id
+                   FROM (
+                       SELECT run_id, MAX(prompt_id) AS prompt_id
+                       FROM triggers WHERE run_date=? GROUP BY run_id
+                   ) t
+                   LEFT JOIN prompts p ON p.id = t.prompt_id
+                   ORDER BY t.run_id DESC""",
                 (run_date,),
             ).fetchall()
-        return [r[0] for r in rows if r[0]]
+        return [{"run_id": r[0], "prompt_version": r[1], "prompt_id": r[2]} for r in rows if r[0]]
 
     def get_triggers(self, run_date: str, run_id: str = None) -> list:
         """读取某日触发信号；run_id 为空则返回最新批次"""
@@ -564,7 +597,7 @@ class StockAgentDB:
 
     # ── screener_stocks ───────────────────────────────────────────────────────
 
-    def save_screener(self, run_date: str, top20: list) -> None:
+    def save_screener(self, run_date: str, top20: list, prompt_id: int = None) -> None:
         """保存精筛结果（追加，每次分析生成新的 run_id）"""
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         run_id = created_at  # 同一批次共用同一个时间戳
@@ -584,8 +617,8 @@ class StockAgentDB:
                         d1_score, d1_reason, d2_score, d2_reason,
                         d3_score, d3_reason, d4_score, d4_reason,
                         d5_score, d5_reason, d6_score, d6_reason,
-                        total_score, recommendation, risk, trigger_index, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        total_score, recommendation, risk, trigger_index, created_at, prompt_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         run_date,
                         run_id,
@@ -604,18 +637,25 @@ class StockAgentDB:
                         stock.get("risk", ""),
                         stock.get("trigger_index"),
                         created_at,
+                        prompt_id,
                     ),
                 )
         logger.debug(f"save_screener: {run_date} run_id={run_id} 写入 {len(top20)} 条")
 
     def get_screener_run_ids(self, run_date: str) -> list:
-        """返回某日所有精筛批次 run_id，按时间倒序"""
+        """返回某日所有精筛批次，携带 prompt 版本信息，按时间倒序"""
         with self.get_conn() as conn:
             rows = conn.execute(
-                "SELECT DISTINCT run_id FROM screener_stocks WHERE run_date=? ORDER BY run_id DESC",
+                """SELECT s.run_id, p.version, p.id
+                   FROM (
+                       SELECT run_id, MAX(prompt_id) AS prompt_id
+                       FROM screener_stocks WHERE run_date=? GROUP BY run_id
+                   ) s
+                   LEFT JOIN prompts p ON p.id = s.prompt_id
+                   ORDER BY s.run_id DESC""",
                 (run_date,),
             ).fetchall()
-        return [r[0] for r in rows if r[0]]
+        return [{"run_id": r[0], "prompt_version": r[1], "prompt_id": r[2]} for r in rows if r[0]]
 
     def get_screener(self, run_date: str, run_id: str = None) -> list:
         """读取某日精筛结果；run_id 为空则返回最新批次"""
@@ -654,8 +694,8 @@ class StockAgentDB:
 
     # ── review_reports ────────────────────────────────────────────────────────
 
-    def save_review(self, run_date: str, review_result: dict) -> None:
-        """保存复盘报告（追加写，每次生成新 run_id）"""
+    def save_review(self, run_date: str, review_result: dict) -> str:
+        """保存复盘报告（追加写，每次生成新 run_id），返回 run_id"""
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         run_id = created_at
         ov = review_result.get("market_overview", {})
@@ -664,8 +704,10 @@ class StockAgentDB:
             conn.execute(
                 """INSERT INTO review_reports
                    (run_date, run_id, markdown_content, market_up_count, market_down_count,
-                    avg_pct_change, market_sentiment, top_sectors, is_friday, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    avg_pct_change, market_sentiment, top_sectors, is_friday,
+                    suggested_trigger_prompt, suggested_trigger_prompt_id, previous_trigger_prompt_id,
+                    trigger_review_markdown, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     run_date, run_id,
                     review_result.get("review_markdown", ""),
@@ -675,10 +717,15 @@ class StockAgentDB:
                     ov.get("市场情绪", ""),
                     json.dumps(top_sectors, ensure_ascii=False, default=str),
                     1 if review_result.get("is_friday") else 0,
+                    review_result.get("suggested_trigger_prompt"),
+                    review_result.get("suggested_trigger_prompt_id"),
+                    review_result.get("previous_trigger_prompt_id"),
+                    review_result.get("trigger_review_markdown"),
                     created_at,
                 ),
             )
         logger.debug(f"save_review: {run_date} run_id={run_id} 复盘报告已保存")
+        return run_id
 
     def get_review_run_ids(self, run_date: str) -> list:
         """返回某日所有复盘批次 run_id，按时间倒序"""
@@ -902,6 +949,17 @@ class StockAgentDB:
                 (agent_name, prompt_name),
             ).fetchone()
         return row["content"] if row else None
+
+    def get_active_prompt_row(self, agent_name: str, prompt_name: str) -> Optional[dict]:
+        """读取当前激活的 Prompt 完整行（含 id、version 等），不存在返回 None"""
+        with self.get_conn() as conn:
+            row = conn.execute(
+                """SELECT id, content, version, source FROM prompts
+                   WHERE agent_name=? AND prompt_name=? AND is_active=1
+                   ORDER BY id DESC LIMIT 1""",
+                (agent_name, prompt_name),
+            ).fetchone()
+        return dict(row) if row else None
 
     def list_prompt_versions(self, agent_name: str) -> list:
         """列出某 Agent 的所有 Prompt 版本（含 source 字段）"""

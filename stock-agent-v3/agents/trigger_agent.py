@@ -468,8 +468,10 @@ def run_trigger_agent() -> dict:
     # Step 8: 保存触发结果到 DB（v1.2 新增）
     try:
         from tools.db import db
-        db.save_triggers(today, triggers)
-        logger.debug(f"触发结果已写入 DB：{len(triggers)} 条")
+        active_prompt = db.get_active_prompt_row("trigger", "system_prompt")
+        prompt_id = active_prompt.get("id") if active_prompt else None
+        db.save_triggers(today, triggers, prompt_id=prompt_id)
+        logger.debug(f"触发结果已写入 DB：{len(triggers)} 条 prompt_id={prompt_id}")
     except Exception as e:
         logger.warning(f"DB save_triggers 失败（不影响主流程）: {e}")
 

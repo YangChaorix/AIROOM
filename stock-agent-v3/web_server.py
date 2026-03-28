@@ -85,10 +85,21 @@ SCHEDULE_KEYS = {
 
 
 def _get_schedule_cfg() -> dict:
-    def _int(key, default): return int(agent_db.get_config(key, default) or default)
+    def _int(key, default):
+        try:
+            return int(agent_db.get_config(key, default) or default)
+        except (ValueError, TypeError):
+            return int(default)
     def _days(key, default):
         raw = (agent_db.get_config(key, default) or default).strip()
-        return raw if raw else None
+        if not raw:
+            return None
+        # 前端用 1-7（周一=1, 周日=7），APScheduler day_of_week 用 0-6（周一=0, 周日=6）
+        try:
+            converted = ",".join(str(int(d) - 1) for d in raw.split(",") if d.strip().isdigit())
+            return converted if converted else None
+        except Exception:
+            return raw
     return {
         "trigger_hour":   _int("schedule_trigger_hour",   9),
         "trigger_minute": _int("schedule_trigger_minute", 15),
@@ -113,7 +124,7 @@ def _build_scheduler() -> BackgroundScheduler:
     def job_morning():
         logger.info("[定时任务] 触发+精筛 启动")
         try:
-            state = run_workflow(run_mode="full:auto")
+            state = run_workflow(run_mode="picks_only:auto")
             logger.info(f"[定时任务] 触发+精筛 完成，触发数: {len((state.get('trigger_result') or {}).get('triggers', []))}")
         except Exception as e:
             logger.error(f"[定时任务] 触发+精筛 异常: {e}", exc_info=True)
@@ -138,6 +149,23 @@ def _build_scheduler() -> BackgroundScheduler:
             )
         except Exception as e:
             logger.error(f"[定时任务] 批评Agent 异常: {e}", exc_info=True)
+
+    def job_clean_news():
+        try:
+            retention = int(agent_db.get_config("news_retention_days", 90))
+            if retention <= 0:
+                return
+            cutoff = (datetime.now().date() - timedelta(days=retention)).strftime("%Y-%m-%d")
+            with sqlite3.connect(DB_PATH) as conn:
+                result = conn.execute(
+                    "DELETE FROM news_items WHERE collect_date < ?", (cutoff,)
+                )
+                deleted = result.rowcount
+                conn.commit()
+            if deleted:
+                logger.info(f"[日志清理] 已删除 {deleted} 条 {cutoff} 以前的新闻记录")
+        except Exception as e:
+            logger.error(f"[定时任务] 新闻清理异常: {e}", exc_info=True)
 
     def job_clean_logs():
         try:
@@ -211,12 +239,19 @@ def _build_scheduler() -> BackgroundScheduler:
         id="clean_logs_job",
         name="日志清理（每天凌晨1点）",
     )
+    sched.add_job(
+        job_clean_news, "cron",
+        hour=2, minute=0,
+        id="clean_news_job",
+        name="新闻清理（每天凌晨2点）",
+    )
 
     logger.info(
         f"[调度器] jobs 已注册 — morning_job: {cfg['trigger_hour']:02d}:{cfg['trigger_minute']:02d} 周{cfg['trigger_days'] or '每天'}"
         f" | review_job: {cfg['review_hour']:02d}:{cfg['review_minute']:02d} 周{cfg['review_days'] or '每天'}"
         f" | critic_job: {cfg['critic_hour']:02d}:{cfg['critic_minute']:02d} 周{cfg['critic_days'] or '每天'}"
-        f" | collect_job: {schedule_hours}点 每{schedule_interval}min | clean_logs_job: 01:00每天"
+        f" | collect_job: {schedule_hours}点 每{schedule_interval}min"
+        f" | clean_logs_job: 01:00每天 | clean_news_job: 02:00每天"
     )
     return sched
 
@@ -347,7 +382,7 @@ def serve_favicon():
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 @app.get("/api/summary", dependencies=[AUTH])
-def api_summary():
+def api_summary(date: str = Query(None)):
     if not os.path.exists(DB_PATH):
         return {"error": "Database not found"}
 
@@ -359,14 +394,25 @@ def api_summary():
         total_stocks  = c.execute("SELECT COUNT(*) FROM screener_stocks").fetchone()[0]
         total_news    = c.execute("SELECT COUNT(*) FROM news_items").fetchone()[0]
 
-        today = c.execute("""
-            SELECT MAX(d) FROM (
-                SELECT run_date AS d FROM run_logs
-                UNION SELECT run_date FROM triggers
-                UNION SELECT run_date FROM screener_stocks
-                UNION SELECT run_date FROM review_reports
-                UNION SELECT collect_date FROM news_items
-            )
+        # 若指定日期则用指定日期，否则取数据库最新日期
+        if date:
+            today = date
+        else:
+            today = c.execute("""
+                SELECT MAX(d) FROM (
+                    SELECT run_date AS d FROM run_logs
+                    UNION SELECT run_date FROM triggers
+                    UNION SELECT run_date FROM screener_stocks
+                    UNION SELECT run_date FROM review_reports
+                    UNION SELECT collect_date FROM news_items
+                )
+            """).fetchone()[0]
+
+        # 最近有复盘数据的工作日（周末自动回退到上一个周五），用于市场概况标题和数据
+        # strftime('%w') 0=周日 6=周六，排除周末
+        latest_trading_date = c.execute("""
+            SELECT MAX(run_date) FROM review_reports
+            WHERE strftime('%w', run_date) NOT IN ('0', '6')
         """).fetchone()[0]
 
         today_data = {"date": today, "runs": 0, "triggers": 0, "stocks": 0, "news": 0}
@@ -378,9 +424,12 @@ def api_summary():
             today_data["stocks"]   = c.execute("SELECT COUNT(*) FROM screener_stocks WHERE run_date=?", (today,)).fetchone()[0]
             today_data["news"]     = c.execute("SELECT COUNT(*) FROM news_items WHERE collect_date=?", (today,)).fetchone()[0]
 
+        # 市场概况用 latest_trading_date（最近一个有复盘的交易日），避免周末/节假日误用今天
+        review_date = latest_trading_date or today
+        if review_date:
             row = c.execute(
-                "SELECT market_up_count, market_down_count, avg_pct_change, market_sentiment FROM review_reports WHERE run_date=?",
-                (today,)
+                "SELECT market_up_count, market_down_count, avg_pct_change, market_sentiment FROM review_reports WHERE run_date=? ORDER BY created_at DESC LIMIT 1",
+                (review_date,)
             ).fetchone()
             if row:
                 latest_review = {"up": row[0], "down": row[1], "avg_change": row[2], "sentiment": row[3]}
@@ -417,6 +466,8 @@ def api_summary():
 
         return {
             "latest_date": today,
+            "latest_trading_date": latest_trading_date,
+            "server_date": datetime.now().strftime("%Y-%m-%d"),
             "totals": {"runs": total_runs, "triggers": total_triggers, "stocks": total_stocks, "news": total_news},
             "today": today_data,
             "latest_review": latest_review,
@@ -481,11 +532,7 @@ def api_triggers(
 def api_screener_runs(date: Optional[str] = Query(None)):
     if not date:
         raise HTTPException(400, "date is required")
-    rows = query_db(
-        "SELECT DISTINCT run_id FROM screener_stocks WHERE run_date=? AND run_id!='' ORDER BY run_id DESC",
-        (date,),
-    )
-    return {"runs": [r["run_id"] for r in rows]}
+    return {"runs": agent_db.get_screener_run_ids(date)}
 
 
 @app.get("/api/screener-stocks", dependencies=[AUTH])
@@ -619,7 +666,7 @@ def api_news(
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     rows = query_db(
-        f"SELECT id, collect_date, title, content, source, pub_time, collected_at, priority FROM news_items {where} ORDER BY COALESCE(pub_time, collected_at) DESC LIMIT ? OFFSET ?",
+        f"SELECT id, collect_date, title, content, source, pub_time, collected_at, priority FROM news_items {where} ORDER BY collected_at DESC LIMIT ? OFFSET ?",
         params + [limit, offset],
     )
     total = query_db(f"SELECT COUNT(*) as cnt FROM news_items {where}", params, fetchall=False)
@@ -647,7 +694,7 @@ def api_event_history(limit: int = Query(50, ge=1, le=200), offset: int = Query(
 @app.get("/api/prompts", dependencies=[AUTH])
 def api_prompts():
     rows = query_db("""
-        SELECT id, agent_name, prompt_name, version, is_active, created_at, note,
+        SELECT id, agent_name, prompt_name, version, is_active, created_at, note, source,
                LENGTH(content) as content_length
         FROM prompts ORDER BY agent_name, is_active DESC, created_at DESC
     """)
@@ -689,6 +736,20 @@ def api_activate_prompt(prompt_id: int):
     if not ok:
         raise HTTPException(404, f"Prompt {prompt_id} not found")
     return query_db("SELECT * FROM prompts WHERE id=?", (prompt_id,), fetchall=False)
+
+
+@app.delete("/api/prompts/{prompt_id}", dependencies=[AUTH])
+def api_delete_prompt(prompt_id: int):
+    row = query_db("SELECT source, is_active, prompt_name FROM prompts WHERE id=?", (prompt_id,), fetchall=False)
+    if not row:
+        raise HTTPException(404, f"Prompt {prompt_id} not found")
+    if row.get("source") == "system":
+        raise HTTPException(400, "系统固定版本不允许删除")
+    if row.get("is_active"):
+        raise HTTPException(400, "当前激活版本不允许删除，请先激活其他版本")
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM prompts WHERE id=?", (prompt_id,))
+    return {"deleted": prompt_id}
 
 
 # ── System Config ─────────────────────────────────────────────────────────────

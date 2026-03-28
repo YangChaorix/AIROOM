@@ -139,6 +139,14 @@ tr:hover td{background:#f8fafc}
 .info-block-title{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
 .info-block-text{font-size:12px;color:var(--text2);line-height:1.6}
 .toggle-btn{font-size:12px;color:var(--text3)}
+.sw-track{display:inline-flex;align-items:center;cursor:pointer;gap:8px;user-select:none}
+.sw-track input{display:none}
+.sw-rail{width:36px;height:20px;background:#94a3b8;border-radius:10px;position:relative;transition:background .2s;flex-shrink:0}
+.sw-rail::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.sw-track input:checked+.sw-rail{background:#059669}
+.sw-track input:checked+.sw-rail::after{transform:translateX(16px)}
+body.dark .sw-rail{background:#475569}
+body.dark .sw-track input:checked+.sw-rail{background:#10b981}
 
 /* ── Trigger Card ── */
 .trigger-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px}
@@ -382,6 +390,13 @@ body.mobile-nav #topbar{padding:10px 12px}
     <!-- ════ DASHBOARD ════ -->
     <div class="page active" id="page-dashboard">
       <div class="page-scroll">
+        <div class="section-header" style="margin-bottom:16px">
+          <div class="section-title">📊 控制台 · <span id="dash-date-label" class="badge badge-green">-</span></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="dash-date-sel" style="font-size:12px;padding:2px 6px" onchange="onDashDateChange()"><option value="">加载中...</option></select>
+            <button class="btn btn-ghost btn-sm" onclick="onDashToday()">回到今日</button>
+          </div>
+        </div>
         <div id="dash-stats" class="grid-4" style="margin-bottom:16px"></div>
         <div class="grid-2" style="margin-bottom:16px">
           <div class="card">
@@ -414,8 +429,8 @@ body.mobile-nav #topbar{padding:10px 12px}
           <div style="display:flex;align-items:center;gap:12px">
             <div class="section-title">选股分析 · <span id="picks-date-label" class="badge badge-green">-</span></div>
             <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--border)">
-              <button id="analysis-tab-trigger-btn" class="btn btn-primary btn-sm" style="border-radius:0;border:none" onclick="switchAnalysisTab('trigger')">⚡ 触发事件</button>
-              <button id="analysis-tab-picks-btn" class="btn btn-ghost btn-sm" style="border-radius:0;border:none;border-left:1px solid var(--border)" onclick="switchAnalysisTab('picks')">🏆 精选股票</button>
+              <button id="analysis-tab-trigger-btn" class="btn btn-ghost btn-sm" style="border-radius:0;border:none" onclick="switchAnalysisTab('trigger')">⚡ 触发事件</button>
+              <button id="analysis-tab-picks-btn" class="btn btn-primary btn-sm" style="border-radius:0;border:none;border-left:1px solid var(--border)" onclick="switchAnalysisTab('picks')">🏆 精选股票</button>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:8px">
@@ -425,18 +440,26 @@ body.mobile-nav #topbar{padding:10px 12px}
           </div>
         </div>
         <!-- 触发事件面板（默认显示） -->
-        <div id="analysis-trigger-panel">
+        <div id="analysis-trigger-panel" style="display:none">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
             <span style="font-size:12px;color:var(--text2)">批次：</span>
             <select id="triggers-run-sel" style="font-size:12px;padding:2px 6px" onchange="onTriggersRunChange()"><option value="">加载中...</option></select>
+            <span id="triggers-prompt-badge-wrap" style="display:none;align-items:center;gap:4px">
+              <span style="font-size:11px;color:var(--text3)">提示词版本：</span>
+              <span id="triggers-prompt-badge" class="badge badge-purple"></span>
+            </span>
           </div>
           <div id="triggers-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
         </div>
         <!-- 精选股票面板（默认隐藏） -->
-        <div id="analysis-picks-panel" style="display:none">
+        <div id="analysis-picks-panel">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
             <span style="font-size:12px;color:var(--text2)">批次：</span>
             <select id="picks-run-sel" style="font-size:12px;padding:2px 6px" onchange="onPicksRunChange()"><option value="">加载中...</option></select>
+            <span id="picks-prompt-badge-wrap" style="display:none;align-items:center;gap:4px">
+              <span style="font-size:11px;color:var(--text3)">提示词版本：</span>
+              <span id="picks-prompt-badge" class="badge badge-purple"></span>
+            </span>
           </div>
           <div id="picks-list"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
         </div>
@@ -458,9 +481,24 @@ body.mobile-nav #topbar{padding:10px 12px}
           </div>
         </div>
         <div id="review-stats" class="grid-4" style="margin-bottom:16px"></div>
-        <div class="card">
+        <div class="card" style="margin-bottom:16px">
           <div class="card-title">📄 复盘报告</div>
           <div id="review-content" class="md-content" style="margin-top:8px"></div>
+        </div>
+        <!-- 触发检测评估 -->
+        <div class="card" id="review-trigger-analysis-card" style="display:none;margin-bottom:16px">
+          <div class="card-title">⚡ 触发检测评估</div>
+          <div id="review-trigger-analysis" class="md-content" style="margin-top:8px"></div>
+        </div>
+        <!-- 建议改进 Prompt（触发） -->
+        <div class="card" id="review-trigger-prompt-card" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div class="card-title" style="margin:0">💡 建议改进 Prompt（触发）</div>
+            <span id="review-trigger-src-badge" class="badge badge-blue" style="font-size:11px">来源: review</span>
+            <span id="review-trigger-status-badge" class="badge" style="font-size:11px"></span>
+            <button id="btn-activate-trigger" class="btn btn-ghost" style="font-size:12px;padding:3px 10px;margin-left:auto" onclick="activateTriggerPrompt()">✓ 激活此版本</button>
+          </div>
+          <pre id="review-trigger-prompt-content" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;font-family:'Cascadia Code',Consolas,monospace;color:var(--text);white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto;margin:0"></pre>
         </div>
       </div>
     </div>
@@ -487,7 +525,17 @@ body.mobile-nav #topbar{padding:10px 12px}
           <div class="table-wrap" style="margin-top:8px">
             <table id="critic-perf-table">
               <thead><tr>
-                <th>排名</th><th>股票</th><th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th>D6</th><th>总分</th><th>当日涨跌%</th><th>相对大盘</th>
+                <th style="text-align:center">排名</th>
+                <th style="text-align:left">股票</th>
+                <th style="text-align:center">D1</th>
+                <th style="text-align:center">D2</th>
+                <th style="text-align:center">D3</th>
+                <th style="text-align:center">D4</th>
+                <th style="text-align:center">D5</th>
+                <th style="text-align:center">D6</th>
+                <th style="text-align:center">总分</th>
+                <th style="text-align:right">当日涨跌%</th>
+                <th style="text-align:center">相对大盘</th>
               </tr></thead>
               <tbody id="critic-perf-body"><tr><td colspan="11"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
             </table>
@@ -501,10 +549,10 @@ body.mobile-nav #topbar{padding:10px 12px}
         <!-- 建议Prompt -->
         <div class="card" id="critic-prompt-card" style="display:none">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-            <div class="card-title" style="margin:0">💡 建议改进 Prompt</div>
+            <div class="card-title" style="margin:0">💡 建议改进 Prompt（精筛）</div>
             <span id="critic-prompt-src-badge" class="badge" style="font-size:11px"></span>
             <span id="critic-prompt-status-badge" class="badge" style="font-size:11px"></span>
-            <button id="btn-rollback" class="btn btn-ghost" style="font-size:12px;padding:3px 10px;margin-left:auto" onclick="rollbackPrompt()">↩ 回滚到上一版本</button>
+            <button id="btn-activate-screener" class="btn btn-ghost" style="font-size:12px;padding:3px 10px;margin-left:auto" onclick="activateScreenerPrompt()">✓ 激活此版本</button>
           </div>
           <pre id="critic-prompt-content" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;font-family:'Cascadia Code',Consolas,monospace;color:var(--text);white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto;margin:0"></pre>
         </div>
@@ -623,18 +671,18 @@ body.mobile-nav #topbar{padding:10px 12px}
             <button class="btn btn-primary" onclick="savePromptVersion()" style="white-space:nowrap">保存为新版本</button>
           </div>
         </div>
+        <!-- 版本历史 -->
+        <div class="card">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text)">版本历史</div>
+          <div id="prompt-history"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+        </div>
         <!-- 固定输出格式只读预览 -->
-        <div class="card" id="prompt-output-format-card" style="display:none">
+        <div class="card" id="prompt-output-format-card" style="display:none;margin-top:20px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
             <span style="font-size:13px;font-weight:600;color:var(--text)">🔒 系统固定输出格式</span>
             <span class="badge badge-gray" style="font-size:11px">运行时自动追加，不纳入编辑</span>
           </div>
           <pre id="prompt-output-format-content" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;font-family:'Cascadia Code',Consolas,monospace;color:var(--text2);white-space:pre-wrap;word-break:break-all;max-height:250px;overflow-y:auto;margin:0"></pre>
-        </div>
-        <!-- 版本历史 -->
-        <div class="card">
-          <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text)">版本历史</div>
-          <div id="prompt-history"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
         </div>
       </div>
     </div>
@@ -790,14 +838,17 @@ async function loadDates() {
   if (S.dates.length) S.date = S.dates[0];
   document.getElementById('date-selector').innerHTML = opts;
   document.getElementById('picks-date-sel').innerHTML = opts;
+  document.getElementById('dash-date-sel').innerHTML = opts;
   document.getElementById('news-date-sel').innerHTML = opts;
 
-  // 复盘日期选择器单独从有报告的日期里取，避免因新闻数据导致默认选今天但无报告
+  // 复盘日期选择器单独从有报告的日期里取，默认选最近工作日（排除周六/周日）
   const rv = await api('/api/review-reports?limit=60');
   const reviewDates = (rv.items || []).map(r => r.run_date).filter(Boolean);
-  const rvOpts = reviewDates.map((d, i) => `<option value="${d}" ${i===0?'selected':''}>${d}</option>`).join('');
+  const isWeekend = d => { const wd = new Date(d + 'T12:00:00').getDay(); return wd === 0 || wd === 6; };
+  const defaultReviewDate = reviewDates.find(d => !isWeekend(d)) || reviewDates[0];
+  const rvOpts = reviewDates.map(d => `<option value="${d}" ${d===defaultReviewDate?'selected':''}>${d}</option>`).join('');
   document.getElementById('review-date-sel').innerHTML = rvOpts || '<option value="">暂无复盘报告</option>';
-  if (reviewDates.length) S.reviewDate = reviewDates[0];
+  if (defaultReviewDate) S.reviewDate = defaultReviewDate;
 }
 
 function onDateChange() {
@@ -841,7 +892,7 @@ async function triggerAnalysis(srcBtnId) {
   });
   if (!confirmed) return;
   try {
-    const r = await fetch('/api/run/trigger', {method: 'POST', headers: {'X-Auth-Token': getToken()}});
+    const r = await fetch('/api/run/trigger', {method: 'POST', headers: {'X-Auth-Token': getToken(), 'Content-Type': 'application/json'}, body: JSON.stringify({mode: 'picks_only'})});
     if (r.status === 409) { alert('分析正在运行中，请稍候...'); return; }
     if (!r.ok) { const d = await r.json(); alert('启动失败: ' + (d.detail||r.status)); return; }
     _setRunBtns(true);
@@ -1045,7 +1096,7 @@ function navigate(page) {
 function renderPage(page) {
   switch(page) {
     case 'dashboard': loadDashboard(); break;
-    case 'picks':     loadTriggers(); loadPicks(); break;
+    case 'picks':     loadPicks(); loadTriggers(); break;
     case 'review':    loadReview(S.reviewDate || S.date); break;
     case 'critic':    loadCritic(); break;
     case 'news':      loadNews(1); break;
@@ -1126,17 +1177,40 @@ async function checkAuth() {
 // ═══════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════
+let _dashDate = null; // null 表示使用最新日期
+
+function onDashDateChange() {
+  const sel = document.getElementById('dash-date-sel');
+  _dashDate = sel ? sel.value : null;
+  loadDashboard();
+}
+
+function onDashToday() {
+  _dashDate = null;
+  const sel = document.getElementById('dash-date-sel');
+  if (sel && sel.options.length) { sel.selectedIndex = 0; }
+  loadDashboard();
+}
+
 async function loadDashboard() {
-  const d = await api('/api/summary');
+  const url = _dashDate ? `/api/summary?date=${_dashDate}` : '/api/summary';
+  const d = await api(url);
   if (!d || d.error) { document.getElementById('dash-stats').innerHTML = `<div class="card"><div class="empty">⚠️ ${d?.error||'无法连接数据库'}</div></div>`; return; }
+
+  // 同步日期选择器
+  const sel = document.getElementById('dash-date-sel');
+  if (sel && d.latest_date && !_dashDate) sel.value = d.latest_date;
 
   const t = d.today || {};
   const lr = d.latest_review;
+  const isToday = d.latest_trading_date && d.server_date && d.latest_trading_date === d.server_date;
+  const dateLabel = isToday ? '今日' : (d.latest_date || '-');
+  document.getElementById('dash-date-label').textContent = d.latest_date || '-';
 
   // Stat cards
   document.getElementById('dash-stats').innerHTML = `
-    ${statCard('今日运行次数', t.runs ?? '-', '运行模式', '⚙️')}
-    ${statCard('触发事件数', t.triggers ?? '-', `最新日期: ${d.latest_date || '-'}`, '⚡')}
+    ${statCard(`${dateLabel}运行次数`, t.runs ?? '-', '运行模式', '⚙️')}
+    ${statCard('触发事件数', t.triggers ?? '-', `数据日期: ${d.latest_date || '-'}`, '⚡')}
     ${statCard('精选股票数', t.stocks ?? '-', '6维度评分筛选', '🏆')}
     ${statCard('收录新闻数', t.news ?? '-', '多源聚合', '📰')}
   `;
@@ -1147,7 +1221,7 @@ async function loadDashboard() {
     const el = document.getElementById('dash-stats');
     el.insertAdjacentHTML('beforeend', `
       <div class="card" style="grid-column:span 4;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-        <div><div class="card-title">📊 最新市场概况 (${d.latest_date})</div></div>
+        <div><div class="card-title">📊 最新市场概况 (${d.latest_trading_date || d.latest_date})</div></div>
         <div style="display:flex;gap:24px;flex-wrap:wrap">
           <div><div style="font-size:11px;color:var(--text2)">上涨家数</div><div style="font-size:20px;font-weight:700;color:var(--red)">${lr.up ?? '-'}</div></div>
           <div><div style="font-size:11px;color:var(--text2)">下跌家数</div><div style="font-size:20px;font-weight:700;color:var(--green)">${lr.down ?? '-'}</div></div>
@@ -1183,9 +1257,12 @@ async function loadDashStocks() {
   const cfg = await api('/api/config');
   const limitCfg = (cfg.items || []).find(c => c.key === 'dashboard_picks_limit');
   const limit = limitCfg ? parseInt(limitCfg.value) || 10 : 10;
+  const queryDate = _dashDate || S.date;
   const titleEl = document.querySelector('#dash-stocks-card .card-title');
-  if (titleEl) titleEl.textContent = `🏆 今日精选（前${limit}）`;
-  const d = await api(`/api/screener-stocks?date=${S.date}&limit=${limit}`);
+  const serverDate = new Date().toISOString().slice(0, 10);
+  const isToday = queryDate === serverDate;
+  if (titleEl) titleEl.textContent = `🏆 ${isToday ? '今日' : queryDate}精选（前${limit}）`;
+  const d = await api(`/api/screener-stocks?date=${queryDate}&limit=${limit}`);
   const stocks = d.items || [];
   if (!stocks.length) { document.getElementById('dash-stocks').innerHTML = '<div class="empty" style="padding:20px">暂无精选股票</div>'; return; }
   document.getElementById('dash-stocks').innerHTML = stocks.map(s => `
@@ -1262,7 +1339,7 @@ function drawDoughnutChart(canvasId, data) {
 // ═══════════════════════════════════════════════════════
 // PICKS (Screener Stocks)
 // ═══════════════════════════════════════════════════════
-let _analysisActiveTab = 'trigger'; // 记录当前激活的 Tab
+let _analysisActiveTab = 'picks'; // 记录当前激活的 Tab
 
 function switchAnalysisTab(tab) {
   _analysisActiveTab = tab;
@@ -1299,16 +1376,23 @@ async function loadPicks() {
     document.getElementById('picks-list').innerHTML = empty('该日期暂无精选股票数据');
     return;
   }
-  sel.innerHTML = runs.map((r, i) =>
-    `<option value="${r}">${r.substring(11, 16)} 第${runs.length - i}次分析</option>`
-  ).join('');
-  sel.value = runs[0]; // 默认最新
-  await _loadPicksByRunId(runs[0]);
+  window._picksRuns = runs;
+  sel.innerHTML = runs.map((r, i) => {
+    const rid = r.run_id || r;
+    return `<option value="${rid}">${rid.substring(11, 16)} 第${runs.length - i}次分析</option>`;
+  }).join('');
+  const firstId = (runs[0].run_id || runs[0]);
+  sel.value = firstId;
+  _updatePromptBadge('picks', runs, firstId);
+  await _loadPicksByRunId(firstId);
 }
 
 async function onPicksRunChange() {
   const runId = document.getElementById('picks-run-sel').value;
-  if (runId) await _loadPicksByRunId(runId);
+  if (runId) {
+    _updatePromptBadge('picks', window._picksRuns || [], runId);
+    await _loadPicksByRunId(runId);
+  }
 }
 
 async function _loadPicksByRunId(runId) {
@@ -1400,7 +1484,24 @@ function toggleCard(id) {
 // ═══════════════════════════════════════════════════════
 async function onTriggersRunChange() {
   const runId = document.getElementById('triggers-run-sel').value;
-  if (runId) await _loadTriggersByRunId(runId);
+  if (runId) {
+    _updatePromptBadge('triggers', window._triggersRuns || [], runId);
+    await _loadTriggersByRunId(runId);
+  }
+}
+
+function _updatePromptBadge(prefix, runs, selectedRunId) {
+  const badge = document.getElementById(`${prefix}-prompt-badge`);
+  const wrap  = document.getElementById(`${prefix}-prompt-badge-wrap`);
+  if (!badge || !wrap) return;
+  const run = runs.find(r => (r.run_id || r) === selectedRunId);
+  const ver = run?.prompt_version;
+  if (ver) {
+    badge.textContent = ver;
+    wrap.style.display = 'inline-flex';
+  } else {
+    wrap.style.display = 'none';
+  }
 }
 
 async function loadTriggers() {
@@ -1416,11 +1517,15 @@ async function loadTriggers() {
     document.getElementById('triggers-list').innerHTML = empty('该日期暂无触发事件');
     return;
   }
-  sel.innerHTML = runs.map((r, i) =>
-    `<option value="${r}">${r.substring(11, 16)} 第${runs.length - i}次触发</option>`
-  ).join('');
-  sel.value = runs[0];
-  await _loadTriggersByRunId(runs[0]);
+  window._triggersRuns = runs;
+  sel.innerHTML = runs.map((r, i) => {
+    const rid = r.run_id || r;
+    return `<option value="${rid}">${rid.substring(11, 16)} 第${runs.length - i}次触发</option>`;
+  }).join('');
+  const firstId = (runs[0].run_id || runs[0]);
+  sel.value = firstId;
+  _updatePromptBadge('triggers', runs, firstId);
+  await _loadTriggersByRunId(firstId);
 }
 
 async function _loadTriggersByRunId(runId) {
@@ -1582,8 +1687,8 @@ async function _loadReviewByRunId(date, runId) {
   const isFriday = new Date(d.run_date + 'T12:00:00').getDay() === 5;
 
   document.getElementById('review-stats').innerHTML = `
-    <div class="card card-sm"><div class="card-title">📈 上涨家数</div><div class="stat-value" style="color:var(--red)">${d.market_up_count ?? '-'}</div><div class="stat-sub">今日上涨个股</div></div>
-    <div class="card card-sm"><div class="card-title">📉 下跌家数</div><div class="stat-value" style="color:var(--green)">${d.market_down_count ?? '-'}</div><div class="stat-sub">今日下跌个股</div></div>
+    <div class="card card-sm"><div class="card-title">📈 上涨家数</div><div class="stat-value" style="color:var(--red)">${d.market_up_count ?? '-'}</div><div class="stat-sub">${d.run_date} 上涨个股</div></div>
+    <div class="card card-sm"><div class="card-title">📉 下跌家数</div><div class="stat-value" style="color:var(--green)">${d.market_down_count ?? '-'}</div><div class="stat-sub">${d.run_date} 下跌个股</div></div>
     <div class="card card-sm"><div class="card-title">📊 涨跌比</div><div class="stat-value" style="color:${pct >= 0 ? 'var(--red)' : 'var(--green)'}">${(pct >= 0 ? '+' : '') + pct + '%'}</div><div class="stat-sub">全市场涨跌比</div></div>
     ${statCard('是否周五', isFriday ? '是 🎉' : '否', isFriday ? '包含周末分析' : '普通交易日', '📅')}
   `;
@@ -1602,7 +1707,60 @@ async function _loadReviewByRunId(date, runId) {
   } else {
     document.getElementById('review-content').innerHTML = sectorsHtml + `<pre style="white-space:pre-wrap;font-size:13px;color:var(--text2);line-height:1.7">${d.markdown_content || '无内容'}</pre>`;
   }
+
+  // ── 触发检测评估 + 建议 Prompt 卡片 ─────────────────────────────────────
+  _reviewReport = d;
+  const hasPrompt = !!d.suggested_trigger_prompt;
+  document.getElementById('review-trigger-analysis-card').style.display = hasPrompt ? '' : 'none';
+  document.getElementById('review-trigger-prompt-card').style.display = hasPrompt ? '' : 'none';
+  if (hasPrompt) {
+    if (d.trigger_review_markdown) {
+      const tEl = document.getElementById('review-trigger-analysis');
+      tEl.innerHTML = typeof marked !== 'undefined' ? marked.parse(d.trigger_review_markdown) : `<pre style="white-space:pre-wrap">${d.trigger_review_markdown}</pre>`;
+    }
+    document.getElementById('review-trigger-prompt-content').textContent = d.suggested_trigger_prompt;
+    const statusBadge = document.getElementById('review-trigger-status-badge');
+    const activateBtn = document.getElementById('btn-activate-trigger');
+    if (d.suggested_trigger_prompt_id) {
+      try {
+        const pr = await api(`/api/prompts/${d.suggested_trigger_prompt_id}`);
+        if (pr.is_active) {
+          statusBadge.textContent = '已激活'; statusBadge.className = 'badge badge-green';
+          activateBtn.style.display = 'none';
+        } else {
+          statusBadge.textContent = '未激活'; statusBadge.className = 'badge badge-gray';
+          activateBtn.style.display = '';
+        }
+      } catch(e) { statusBadge.textContent = ''; }
+    }
+  }
 }
+
+let _reviewReport = null;
+
+async function activateTriggerPrompt() {
+  if (!_reviewReport || !_reviewReport.suggested_trigger_prompt_id) return;
+  const ok = await showConfirmDialog({
+    icon: '⚡',
+    title: '激活触发检测 Prompt',
+    message: '确认激活此版本触发检测 Prompt？',
+    warning: '当前激活版本将归档，可在提示词管理页找回。',
+    confirmText: '确认激活',
+  });
+  if (!ok) return;
+  try {
+    await api(`/api/prompts/${_reviewReport.suggested_trigger_prompt_id}/activate`, {method: 'POST'});
+    const statusBadge = document.getElementById('review-trigger-status-badge');
+    statusBadge.textContent = '已激活';
+    statusBadge.className = 'badge badge-green';
+    const activateBtn = document.getElementById('btn-activate-trigger');
+    activateBtn.textContent = '✓ 已激活';
+    activateBtn.disabled = true;
+  } catch(e) {
+    alert('激活失败：' + (e.message || e));
+  }
+}
+
 
 // ═══════════════════════════════════════════════════════
 // NEWS
@@ -1663,10 +1821,12 @@ function renderNewsItem(n) {
   const priColor = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--text3)' }[n.priority] || 'var(--text3)';
   const id = `news-${n.id}`;
   return `<div class="news-item" onclick="toggleNews('${id}')">
-    <div class="news-meta">
+    <div class="news-meta" style="flex-wrap:nowrap">
       <span class="source-badge ${srcClass}">${n.source || '未知'}</span>
-      ${n.priority ? `<span style="font-size:10px;color:${priColor};font-weight:600">${n.priority.toUpperCase()}</span>` : ''}
-      <span style="font-size:11px;color:var(--text3)">${fmt_time(n.pub_time || n.collected_at)}</span>
+      ${n.priority ? `<span style="font-size:10px;color:${priColor};font-weight:600;white-space:nowrap">${n.priority.toUpperCase()}</span>` : ''}
+      ${n.pub_time ? `<span style="font-size:11px;color:var(--text3);white-space:nowrap" title="发布时间">📰 ${fmt_time(n.pub_time)}</span>` : ''}
+      <span style="flex:1;min-width:8px"></span>
+      ${n.collected_at ? `<span style="font-size:11px;color:var(--text3);white-space:nowrap" title="采集时间">🕐 ${fmt_time(n.collected_at)}</span>` : ''}
     </div>
     <div class="news-title">${n.title || '无标题'}</div>
     <div class="news-content" id="${id}">${n.content || '无正文'}</div>
@@ -1786,7 +1946,7 @@ async function _loadCriticForDate(date) {
   try {
     const rd = await api(`/api/critic-reports/runs?date=${date}`);
     const runs = rd.runs || [];
-    rsel.innerHTML = runs.length ? runs.map((r,i) => `<option value="${r}">${r}${i===0?' (最新)':''}</option>`).join('') : '<option value="">暂无批次</option>';
+    rsel.innerHTML = runs.length ? runs.map((r,i) => `<option value="${r}">${r.substring(11,16)} 第${runs.length-i}次批评</option>`).join('') : '<option value="">暂无批次</option>';
     if (runs.length) await _renderCriticReport(date, runs[0]);
     else _clearCriticPage();
   } catch(e) {
@@ -1843,18 +2003,16 @@ async function _renderCriticReport(date, runId) {
     if (rep.suggested_prompt_id) {
       try {
         const pr = await api(`/api/prompts/${rep.suggested_prompt_id}`);
+        const activateBtn = document.getElementById('btn-activate-screener');
         if (pr.is_active) {
-          statusBadge.textContent = '已激活';
-          statusBadge.className = 'badge badge-green';
+          statusBadge.textContent = '已激活'; statusBadge.className = 'badge badge-green';
+          activateBtn.style.display = 'none';
         } else {
-          statusBadge.textContent = '未激活';
-          statusBadge.className = 'badge badge-gray';
+          statusBadge.textContent = '未激活'; statusBadge.className = 'badge badge-gray';
+          activateBtn.style.display = '';
         }
       } catch(e) { statusBadge.textContent = ''; }
     } else { statusBadge.textContent = ''; }
-    // 回滚按钮
-    const rollbackBtn = document.getElementById('btn-rollback');
-    rollbackBtn.style.display = rep.previous_prompt_id ? '' : 'none';
   } else {
     promptCard.style.display = 'none';
   }
@@ -1922,19 +2080,23 @@ function _startCriticPoll() {
   }, 3000);
 }
 
-async function rollbackPrompt() {
-  if (!_criticReport || _criticReport.previous_prompt_id == null) return;
-  if (!confirm('确认回滚到上一版本的精筛 Prompt？')) return;
-  const pid = _criticReport.previous_prompt_id;
+async function activateScreenerPrompt() {
+  if (!_criticReport || !_criticReport.suggested_prompt_id) return;
+  const ok = await showConfirmDialog({
+    icon: '🏆',
+    title: '激活精筛 Prompt',
+    message: '确认激活此版本精选股票 Prompt？',
+    warning: '当前激活版本将归档，可在提示词管理页找回。',
+    confirmText: '确认激活',
+  });
+  if (!ok) return;
   try {
-    await api(`/api/prompts/${pid}/activate`, {method: 'POST'});
-    alert('已回滚到上一版本 Prompt');
-    // 刷新状态徽章
+    await api(`/api/prompts/${_criticReport.suggested_prompt_id}/activate`, {method: 'POST'});
     const statusBadge = document.getElementById('critic-prompt-status-badge');
-    statusBadge.textContent = '已回滚（上一版本已激活）';
-    statusBadge.className = 'badge badge-gray';
+    statusBadge.textContent = '已激活'; statusBadge.className = 'badge badge-green';
+    document.getElementById('btn-activate-screener').style.display = 'none';
   } catch(e) {
-    alert('回滚失败：' + (e.message || e));
+    alert('激活失败：' + (e.message || e));
   }
 }
 
@@ -1944,7 +2106,7 @@ async function rollbackPrompt() {
 let _promptsData = [];
 let _currentPromptAgent = 'trigger';
 let _promptHistoryPage = 1;
-const _PROMPT_HISTORY_PAGE_SIZE = 20;
+const _PROMPT_HISTORY_PAGE_SIZE = 5;
 
 const PROMPT_META = {
   trigger: {
@@ -1952,6 +2114,7 @@ const PROMPT_META = {
     forbidden: 'JSON字段名（has_triggers、triggers数组、summary等结构字段）、输出层级',
     autoAppend: '系统自动追加 JSON 格式模板（triggers数组完整结构）',
     criticManaged: false,
+    reviewManaged: true,
   },
   screener: {
     editable: 'D1-D6 各维度的评分标准文字、注意事项示例、典型行业/企业案例说明',
@@ -1998,6 +2161,7 @@ async function _renderPromptAgent(agent) {
     `<div>❌ <b>禁止修改</b>：${meta.forbidden || ''}</div>` +
     `<div>🔒 <b>系统自动追加</b>：${meta.autoAppend || ''}` +
     (meta.criticManaged ? `&nbsp;&nbsp;<span class="badge badge-purple" style="font-size:11px">Critic Agent 可自动改进</span>` : '') +
+    (meta.reviewManaged ? `&nbsp;&nbsp;<span class="badge badge-blue" style="font-size:11px">复盘 Agent 可自动改进</span>` : '') +
     `</div>`;
 
   const list = _promptsData.filter(p => p.agent_name === agent && p.prompt_name === 'system_prompt');
@@ -2044,7 +2208,7 @@ function _renderPromptHistory(list, page) {
     <td style="padding:8px 10px;font-size:12px">
       ${pr.source === 'system'
         ? '<span class="badge badge-gray" style="font-size:11px">🔒 系统固定</span>'
-        : `<span class="badge ${pr.source === 'critic' ? 'badge-purple' : 'badge-gray'}" style="font-size:11px">${pr.source || 'human'}</span>`}
+        : `<span class="badge ${pr.source === 'critic' ? 'badge-purple' : pr.source === 'review' ? 'badge-blue' : 'badge-gray'}" style="font-size:11px">${pr.source || 'human'}</span>`}
     </td>
     <td style="padding:8px 10px;font-size:12px;color:var(--text2)">${pr.note || ''}</td>
     <td style="padding:8px 10px">
@@ -2054,8 +2218,10 @@ function _renderPromptHistory(list, page) {
           ? '<span class="badge badge-green">当前版本</span>'
           : `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="activatePromptVersion(${pr.id})">激活</button>`}
     </td>
-    <td style="padding:8px 10px;text-align:center">
+    <td style="padding:8px 10px;text-align:center;white-space:nowrap">
       <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="previewPromptVersion(${pr.id})">查看</button>
+      ${!pr.is_active && pr.source !== 'system' ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;margin-left:4px" onclick="diffPromptVersion(${pr.id})">对比</button>` : ''}
+      ${!pr.is_active && pr.source !== 'system' ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;margin-left:4px;color:var(--red)" onclick="deletePromptVersion(${pr.id},'${pr.version}')">删除</button>` : ''}
     </td>
   </tr>`).join('');
 
@@ -2081,6 +2247,93 @@ function _renderPromptHistory(list, page) {
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>${pager}`;
+}
+
+// ── Prompt Diff ──────────────────────────────────────────────────────────────
+function _lcsMatrix(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m + 1}, () => new Int32Array(n + 1));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+  return dp;
+}
+
+function _diffLines(oldText, newText) {
+  const a = oldText.split('\n'), b = newText.split('\n');
+  const dp = _lcsMatrix(a, b);
+  const result = [];
+  let i = a.length, j = b.length;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && a[i-1] === b[j-1]) {
+      result.unshift({type: 'same', text: a[i-1]});
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+      result.unshift({type: 'add', text: b[j-1]});
+      j--;
+    } else {
+      result.unshift({type: 'remove', text: a[i-1]});
+      i--;
+    }
+  }
+  return result;
+}
+
+async function diffPromptVersion(id) {
+  const oldData  = await api(`/api/prompts/${id}`);
+  const oldText  = oldData.content || '';
+  const newText  = document.getElementById('prompt-editor').value;
+  const oldVer   = oldData.version || '历史版本';
+
+  const diff = _diffLines(oldText, newText);
+  const esc  = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // 统计
+  const added   = diff.filter(d => d.type === 'add').length;
+  const removed = diff.filter(d => d.type === 'remove').length;
+
+  const lines = diff.map((d, idx) => {
+    if (d.type === 'same')   return `<div style="padding:1px 8px;font-family:monospace;font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6"> ${esc(d.text)}</div>`;
+    if (d.type === 'add')    return `<div style="padding:1px 8px;font-family:monospace;font-size:12px;background:rgba(34,197,94,.12);color:#16a34a;white-space:pre-wrap;line-height:1.6">+${esc(d.text)}</div>`;
+    if (d.type === 'remove') return `<div style="padding:1px 8px;font-family:monospace;font-size:12px;background:rgba(239,68,68,.1);color:#dc2626;white-space:pre-wrap;line-height:1.6">-${esc(d.text)}</div>`;
+  }).join('');
+
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;inset:0;z-index:8888;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)';
+  el.innerHTML = `
+    <div style="background:var(--bg);border-radius:16px;width:min(860px,96vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+        <span style="font-size:15px;font-weight:600;color:var(--text)">版本对比：${oldVer} → 当前版本</span>
+        <span style="font-size:12px;color:#16a34a;background:rgba(34,197,94,.1);padding:2px 8px;border-radius:4px">+${added} 行新增</span>
+        <span style="font-size:12px;color:#dc2626;background:rgba(239,68,68,.1);padding:2px 8px;border-radius:4px">-${removed} 行删除</span>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="margin-left:auto;background:none;border:none;font-size:20px;color:var(--text3);cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="overflow-y:auto;padding:12px 0;flex:1">
+        <div style="font-size:11px;color:var(--text3);padding:0 12px 6px;font-family:monospace">
+          <span style="color:#dc2626">─ ${oldVer}</span>&nbsp;&nbsp;<span style="color:#16a34a">+ 当前版本</span>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;margin:0 12px;overflow:hidden">${lines || '<div style="padding:20px;text-align:center;color:var(--text3)">两个版本内容完全相同</div>'}</div>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  el.onclick = e => { if (e.target === el) el.remove(); };
+}
+
+async function deletePromptVersion(id, version) {
+  const confirmed = await showConfirmDialog({
+    icon: '🗑️',
+    title: `删除版本 ${version}`,
+    message: '确认删除该历史版本？此操作不可撤销。',
+    warning: '当前激活版本和系统固定版本无法删除。',
+    confirmText: '确认删除',
+    cancelText: '取消',
+  });
+  if (!confirmed) return;
+  await api(`/api/prompts/${id}`, { method: 'DELETE' });
+  const d = await api('/api/prompts');
+  _promptsData = d.items || [];
+  _promptHistoryPage = 1;
+  _renderPromptAgent(_currentPromptAgent);
 }
 
 async function savePromptVersion() {
@@ -2119,7 +2372,7 @@ async function previewPromptVersion(id) {
 // ═══════════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════════
-const NEWS_SOURCES_ALL = ['财联社','东方财富','同花顺','新浪财经','财联社电报','国家发改委','财新'];
+const NEWS_SOURCES_ALL = ['财联社','东方财富','同花顺','新浪财经','财联社电报','上海金属网','国家发改委','工信部','国家能源局','生态环境部','国家医保局','财新'];
 
 // 新闻配置卡片的时间选项（可扩展）
 const NEWS_HOURS_OPTIONS_SCREENER = [[0,'仅当天（0点起）'],[12,'过去12小时'],[24,'过去24小时（含昨天）'],[36,'过去36小时'],[48,'过去48小时（含前天）']];
@@ -2128,7 +2381,10 @@ const NEWS_HOURS_OPTIONS_ANALYST  = [[24,'过去24小时'],[48,'过去48小时']
 function _renderScheduleConfigCard(items) {
   const get = key => items.find(c => c.key === key);
   const val = key => get(key)?.value || '';
-  const logRetention = parseInt(val('log_retention_days') || '3');
+  const logRetention  = parseInt(val('log_retention_days')  || '3');
+  const newsRetention = parseInt(val('news_retention_days') || '90');
+  const criticAutoActivate  = (val('critic_screener_auto_activate')  || 'false') === 'true';
+  const reviewAutoActivate  = (val('review_trigger_auto_activate')   || 'false') === 'true';
 
   const DAYS = [{v:'1',l:'周一'},{v:'2',l:'周二'},{v:'3',l:'周三'},{v:'4',l:'周四'},{v:'5',l:'周五'},{v:'6',l:'周六'},{v:'7',l:'周日'}];
   const triggerDaySet = new Set((val('schedule_trigger_days')||'').split(',').map(s=>s.trim()).filter(Boolean));
@@ -2183,6 +2439,35 @@ function _renderScheduleConfigCard(items) {
       </select>
       <span style="font-size:12px;color:var(--text2)">更早的日志每天凌晨 1 点自动删除</span>
     </div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+      <div style="font-size:12px;color:var(--text3);font-weight:500;white-space:nowrap">📰 新闻保留</div>
+      <select id="sched-news-retention" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:13px">
+        ${[30,60,90,120,180,365].map(d=>`<option value="${d}" ${d===newsRetention?'selected':''}>${d} 天${d===90?' (默认)':d===365?' (1年)':''}</option>`).join('')}
+        <option value="0" ${newsRetention===0?'selected':''}>不自动清理</option>
+      </select>
+      <span style="font-size:12px;color:var(--text2)">更早的新闻每天凌晨 2 点自动删除</span>
+    </div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:var(--text3);font-weight:500">🤖 Prompt 自动激活</div>
+      <label class="sw-track">
+        <input type="checkbox" id="sched-critic-auto-activate" ${criticAutoActivate ? 'checked' : ''}>
+        <span class="sw-rail"></span>
+        <span style="font-size:13px;color:var(--text);font-weight:500">🏆 精选股票提示词</span>
+      </label>
+      <div style="padding-left:44px;margin-top:-4px">
+        <div style="font-size:12px;color:var(--text2)">由「🔬 批评报告」根据当日选股实际涨跌表现自动改进</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">开启 = 改进版本直接生效；关闭 = 在批评报告页手动点「激活」确认</div>
+      </div>
+      <label class="sw-track" style="margin-top:4px">
+        <input type="checkbox" id="sched-review-auto-activate" ${reviewAutoActivate ? 'checked' : ''}>
+        <span class="sw-rail"></span>
+        <span style="font-size:13px;color:var(--text);font-weight:500">⚡ 触发事件提示词</span>
+      </label>
+      <div style="padding-left:44px;margin-top:-4px">
+        <div style="font-size:12px;color:var(--text2)">由「📋 市场复盘」根据当日市场实际热点与触发检测对比自动改进</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">开启 = 改进版本直接生效；关闭 = 在市场复盘页手动点「激活」确认</div>
+      </div>
+    </div>
     <div style="padding:12px 16px;display:flex;gap:8px;align-items:center">
       <button class="btn btn-primary btn-sm" onclick="saveScheduleConfig()">保存</button>
       <span id="sched-tip" style="display:none;font-size:12px;color:var(--green)">已保存并生效</span>
@@ -2233,7 +2518,7 @@ async function loadConfig() {
   const items = d.items || [];
   if (!items.length) { document.getElementById('config-list').innerHTML = empty('暂无配置项'); return; }
 
-  const SPECIAL_KEYS = new Set(['screener_news_sources','screener_news_lookback_hours','analyst_news_sources','analyst_news_lookback_hours','schedule_trigger_hour','schedule_trigger_minute','schedule_trigger_days','schedule_review_hour','schedule_review_minute','schedule_review_days','schedule_critic_hour','schedule_critic_minute','schedule_critic_days','log_retention_days']);
+  const SPECIAL_KEYS = new Set(['screener_news_sources','screener_news_lookback_hours','analyst_news_sources','analyst_news_lookback_hours','schedule_trigger_hour','schedule_trigger_minute','schedule_trigger_days','schedule_review_hour','schedule_review_minute','schedule_review_days','schedule_critic_hour','schedule_critic_minute','schedule_critic_days','log_retention_days','news_retention_days','critic_screener_auto_activate','review_trigger_auto_activate']);
   const generalItems = items.filter(c => !SPECIAL_KEYS.has(c.key));
 
   const get = key => items.find(c => c.key === key);
@@ -2299,7 +2584,10 @@ async function saveScheduleConfig() {
     ['schedule_critic_hour',    document.getElementById('sched-critic-hour').value],
     ['schedule_critic_minute',  document.getElementById('sched-critic-min').value],
     ['schedule_critic_days',    getCheckedDays('critic')],
-    ['log_retention_days',      document.getElementById('sched-log-retention').value],
+    ['log_retention_days',              document.getElementById('sched-log-retention').value],
+    ['news_retention_days',             document.getElementById('sched-news-retention').value],
+    ['critic_screener_auto_activate',   document.getElementById('sched-critic-auto-activate').checked ? 'true' : 'false'],
+    ['review_trigger_auto_activate',    document.getElementById('sched-review-auto-activate').checked ? 'true' : 'false'],
   ];
   try {
     const results = await Promise.all(pairs.map(([key, value]) =>

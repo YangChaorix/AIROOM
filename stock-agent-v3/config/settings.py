@@ -147,6 +147,10 @@ class AgentConfig:
     collect_low_hours: str = field(
         default_factory=lambda: os.getenv("COLLECT_LOW_HOURS", "6-9,15-18")
     )
+    # 新闻入库最大天数（pub_time 超过此天数的新闻跳过，0=不限制）
+    news_max_age_days: int = field(
+        default_factory=lambda: int(os.getenv("NEWS_MAX_AGE_DAYS", "3"))
+    )
     # APScheduler 触发时段（APScheduler hour 表达式，如 "6-17"）
     collect_schedule_hours: str = field(
         default_factory=lambda: os.getenv("COLLECT_SCHEDULE_HOURS", "6-17")

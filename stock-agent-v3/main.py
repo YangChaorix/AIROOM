@@ -281,8 +281,27 @@ def cmd_screener_only(date: str = None) -> None:
         "triggers": triggers,
     }
     logger.info(f"从 DB 加载 {target_date} 触发数据：{len(triggers)} 条，开始重跑精筛...")
+    run_id = None
+    try:
+        run_id = db.start_run("screener_only:manual")
+    except Exception as e:
+        logger.warning(f"DB start_run 失败（不影响主流程）: {e}")
+
     state = {"trigger_result": trigger_result}
-    state["screener_result"] = run_screener_agent(trigger_result)
+    try:
+        state["screener_result"] = run_screener_agent(trigger_result)
+        if run_id is not None:
+            try:
+                db.finish_run(run_id, "success")
+            except Exception as e:
+                logger.warning(f"DB finish_run 失败: {e}")
+    except Exception as e:
+        if run_id is not None:
+            try:
+                db.finish_run(run_id, "error", str(e))
+            except Exception:
+                pass
+        raise
     _print_screener_result(state)
 
 
@@ -302,7 +321,7 @@ def cmd_event() -> None:
     from graph.workflow import run_workflow
 
     logger.info("启动模式：触发 + 精筛")
-    state = run_workflow(run_mode="full:manual")
+    state = run_workflow(run_mode="picks_only:manual")
     _print_trigger_result(state)
     _print_screener_result(state)
 
@@ -320,12 +339,31 @@ def cmd_review() -> None:
 def cmd_collect() -> None:
     """执行一次新闻采集，写入缓存"""
     from tools.news_collector import collect_all_due_sources, NewsCacheManager
+    from tools.db import db
     logger.info("启动模式：新闻采集")
-    result = collect_all_due_sources()
-    mgr = NewsCacheManager()
-    cache = mgr.load_today()
-    total = len(cache.get("news", []))
-    logger.info(f"采集完成：{result}，当日缓存总计 {total} 条")
+    run_id = None
+    try:
+        run_id = db.start_run("collect:manual")
+    except Exception as e:
+        logger.warning(f"DB start_run 失败（不影响主流程）: {e}")
+    try:
+        result = collect_all_due_sources()
+        mgr = NewsCacheManager()
+        cache = mgr.load_today()
+        total = len(cache.get("news", []))
+        logger.info(f"采集完成：{result}，当日缓存总计 {total} 条")
+        if run_id is not None:
+            try:
+                db.finish_run(run_id, "success")
+            except Exception as e:
+                logger.warning(f"DB finish_run 失败: {e}")
+    except Exception as e:
+        if run_id is not None:
+            try:
+                db.finish_run(run_id, "error", str(e))
+            except Exception:
+                pass
+        raise
     print(f"\n【新闻采集完成】")
     print(f"本次各来源新增：{result}")
     print(f"当日缓存总计：{total} 条")
@@ -359,7 +397,7 @@ def cmd_schedule() -> None:
 
     def job_morning():
         logger.info(f"[定时任务] 触发+精筛 启动")
-        state = run_workflow(run_mode="full:auto")
+        state = run_workflow(run_mode="picks_only:auto")
         _print_trigger_result(state)
         _print_screener_result(state)
 

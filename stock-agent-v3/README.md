@@ -463,3 +463,5 @@ grep "stock_analyst_agent" logs/$(date +%Y-%m-%d).log
 # 查看 DEBUG 详情（需先设置 LOG_LEVEL=DEBUG）
 tail -f logs/$(date +%Y-%m-%d).log | grep -A5 "分析完成"
 ```
+
+cp data/db/stock_agent.db data/db/stock_agent.db.bak_$(date +%Y%m%d)

@@ -1,5 +1,4 @@
 services:
-
   # ── Web Dashboard + 内嵌调度器 ─────────────────────────────────────────────
   web:
     image: stock-agent-v3:latest
@@ -11,10 +10,10 @@ services:
     ports:
       - "8888:8888"
     volumes:
-      - ./data:/app/data          # SQLite DB 持久化
-      - ./logs:/app/logs          # 日志持久化
-      - ./.env:/app/.env:ro       # API Keys（只读）
-      - ./config/models.json:/app/config/models.json:ro  # 模型配置（只读）
+      - ./data:/app/data # SQLite DB 持久化
+      - ./logs:/app/logs # 日志持久化
+      - ./.env:/app/.env:ro # API Keys（只读）
+      - ./config/models.json:/app/config/models.json:ro # 模型配置（只读）
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
     healthcheck:

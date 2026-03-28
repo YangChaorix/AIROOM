@@ -221,6 +221,14 @@ class NewsCacheManager:
         now_str = _now_str()
         new_db_items = []
 
+        # 读取最大天数限制
+        try:
+            from config.settings import settings
+            max_age_days = settings.agent.news_max_age_days
+        except Exception:
+            max_age_days = 3
+        now_dt = datetime.now()
+
         for item in items:
             if "错误" in item:
                 continue
@@ -229,6 +237,25 @@ class NewsCacheManager:
                 continue
 
             news_id = _make_news_id(title)
+
+            # 无发布时间不入库
+            pub_time_str = item.get("时间", "").strip()
+            if not pub_time_str:
+                logger.debug(f"  [无发布时间跳过]「{title[:30]}」")
+                continue
+
+            # 新闻时效过滤：pub_time 超过 max_age_days 天的跳过
+            if max_age_days > 0:
+                pub_dt = None
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                    try:
+                        pub_dt = datetime.strptime(pub_time_str[:len(fmt)], fmt)
+                        break
+                    except ValueError:
+                        continue
+                if pub_dt and (now_dt - pub_dt).days >= max_age_days:
+                    logger.debug(f"  [过期跳过] {pub_time_str}「{title[:30]}」")
+                    continue
 
             # 跨日去重：若同 hash 在历史日期出现过，更新 event_history 后跳过
             first_date = db.news_seen_before(news_id, today)

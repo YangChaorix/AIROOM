@@ -6,8 +6,10 @@
 |------|------|
 | 新功能 | 批评Agent（15:40 自动验证当日选股，LLM 分析维度准确率，自动更新精筛 Prompt） |
 | 新页面 | Web UI「🔬 批评报告」导航页 |
-| DB 变更 | 新增 2 张表、1 列、3 个配置项；存量提示词分拆为可编辑部分 + 固定格式 |
+| DB 变更 | 新增 2 张表、1 列、4 个配置项；存量提示词分拆为可编辑部分 + 固定格式 |
 | 提示词 | 所有 Agent Prompt 拆分为 `system_prompt`（可改）+ `output_format`（系统固定）|
+| UI 优化 | 控制台日期筛选、选股分析 Tab 合并、提示词版本对比/删除、Favicon |
+| 运维 | 新闻自动清理定时任务（每天凌晨 2 点，保留天数可配置）|
 
 ---
 
@@ -139,6 +141,7 @@ CREATE TABLE critic_stock_performance (
 | `schedule_critic_hour` | `15` | 批评Agent执行小时 |
 | `schedule_critic_minute` | `40` | 批评Agent执行分钟 |
 | `schedule_critic_days` | `1,2,3,4,5` | 执行日（周一到周五）|
+| `news_retention_days` | `90` | 新闻保留天数；超出自动删除，`0` = 不清理 |
 
 ---
 
@@ -175,18 +178,22 @@ CREATE TABLE critic_stock_performance (
 
 **变更**：
 - 左侧导航「触发事件」+「精选股票」合并为单一入口「⚡ 选股分析」
-- 页内通过 Tab 切换，默认显示触发事件，批次选择器各自独立
+- 页内通过 Tab 切换，**默认显示「🏆 精选股票」Tab**，批次选择器各自独立
 - 移除「⚡ 重新触发」独立按钮（功能由「▶ 触发分析」全流程覆盖）
 
 **迁移**：纯前端 UI 改动，无数据库变更，无需任何迁移操作。
 
 ---
 
-### Patch 4 — 提示词版本历史去除 100 条上限 + 分页显示
+### Patch 4 — 提示词版本历史去除 100 条上限 + 分页 + 对比 + 删除
 
 **变更**：
 - `tools/db.py`：`save_prompt()` 移除每个 agent/prompt_name 组合最多保存 100 条的限制，版本数量不再受约束
-- `web/index.html`：版本历史改为分页展示，每页 20 条，支持翻页
+- `web/index.html`：版本历史改为分页展示，**每页 5 条**，支持翻页
+- 版本历史新增「**对比**」按钮：与当前编辑区内容进行逐行 LCS Diff，绿色显示新增行、红色显示删除行（纯前端实现，无需后端）
+- 版本历史新增「**删除**」按钮（红色）：带 confirm 确认弹窗，调用 `DELETE /api/prompts/{id}` 删除该版本；系统固定版本（source=system）和当前激活版本不可删除
+- `web_server.py` 新增 `DELETE /api/prompts/{prompt_id}` 接口：双重保护，拒绝删除 source=system 和 is_active=1 的记录
+- 提示词编辑区布局调整：**版本历史在上，系统固定输出格式预览在下**
 
 **迁移**：无需数据库迁移。已有的历史版本不受影响，移除上限后新版本可无限积累。
 
@@ -199,6 +206,69 @@ CREATE TABLE critic_stock_performance (
 >   ORDER BY id DESC LIMIT 200
 > );
 > ```
+
+---
+
+### Patch 5 — 项目 Favicon（K 线图样式）
+
+**变更**：
+- 新增 `web/favicon.svg`：深色背景 K 线图，A 股风格（红涨绿跌），3 根红柱 + 2 根绿柱 + 蓝色上升趋势线
+- `web_server.py` 新增路由：同时响应 `/favicon.ico` 和 `/favicon.svg`，Content-Type 均为 `image/svg+xml`
+- `web/index.html` `<head>` 新增 `<link rel="icon" href="/favicon.svg" type="image/svg+xml"/>`
+
+**迁移**：无需迁移，重启服务即可（浏览器可能需要强制刷新 Ctrl+Shift+R 更新缓存）。
+
+---
+
+### Patch 6 — 控制台日期筛选 + 「今日」标签修复
+
+**问题**：控制台汇总数据来自数据库最新日期，若当天无运行记录则展示昨日数据，但标签仍显示「今日运行次数」。
+
+**变更**：
+- `web_server.py` `/api/summary` 接口新增 `date` 查询参数（可选），新增 `server_date` 字段（服务器当前日期）返回
+- 前端将 `latest_date`（数据日期）与 `server_date`（服务器日期）对比：相同才显示「今日」，否则显示实际日期
+- 控制台页面 section-header 新增**日期选择器** + 「回到今日」按钮，可查看任意历史日期的汇总数据
+- 日期选择器选项来自 `S.dates`（已有数据的日期列表），无需额外接口
+
+**迁移**：无需数据库迁移，重启服务即可。
+
+---
+
+### Patch 7 — 新闻自动清理定时任务
+
+**变更**：
+- `tools/db.py` 新增系统配置项 `news_retention_days`，默认值 `90`（天），含义：自动清理超出天数的新闻记录，`0` 表示不清理
+- `web_server.py` 新增 `job_clean_news()` 定时任务，每天凌晨 2:00 执行，删除 `news_items` 表中 `collect_date` 早于阈值的记录
+- `web/index.html` 系统配置页新增「📰 新闻保留」下拉选项（30/60/90/120/180/365/0 天），可在页面直接修改保留周期
+
+**新增配置项**：
+
+| key | 默认值 | 说明 |
+|-----|--------|------|
+| `news_retention_days` | `90` | 新闻保留天数，超出自动删除；`0` = 不清理 |
+
+**迁移**：服务启动时 `init_db()` 自动写入默认值，无需手动操作。重启服务后定时任务即生效。
+
+> 若需立即手动清理，可执行：
+> ```sql
+> DELETE FROM news_items WHERE collect_date < date('now', '-90 days');
+> ```
+
+---
+
+### Patch 8 — 批评报告 UI 修复（批次格式 + 表格对齐 + source 标签）
+
+**问题集合**：
+1. 批评报告批次显示格式与选股分析不一致（缺少「第N次批评」样式）
+2. 个股表现表格表头与内容列对不齐（涨跌幅列左右对齐不一致）
+3. Critic 自动生成的提示词 `source` 字段在前端未显示紫色「critic」徽章
+
+**修复**：
+1. `web/index.html` 批评报告批次选择器格式统一为 `HH:MM 第N次批评`
+2. 个股表现表格各列显式设置 `text-align`：股票代码/名称左对齐，评分/价格/涨跌幅右对齐
+3. `web_server.py` `/api/prompts` SELECT 查询补充 `source` 字段（之前漏选导致前端收到 `undefined`）
+
+**迁移**：纯代码修复，无数据库变更，重启服务即可。
 
 ---
 

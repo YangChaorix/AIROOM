@@ -425,7 +425,10 @@ def get_nea_news(max_articles: int = 5) -> list[dict]:
         soup = BeautifulSoup(r.text, "html.parser")
         links = []
         seen_hrefs: set[str] = set()
-        for a in soup.select("ul.list li a, .news_area li a, li a"):
+        for li in soup.select("ul.list li, .news_area li, li"):
+            a = li.find("a")
+            if not a:
+                continue
             title = a.get_text(strip=True)
             href = a.get("href", "")
             if not title or len(title) <= 5 or not href:
@@ -435,14 +438,16 @@ def get_nea_news(max_articles: int = 5) -> list[dict]:
             elif href.startswith("/"):
                 full_url = f"{base_url}{href}"
             elif href.startswith("../"):
-                # 如 ../20260319/xxx/c.html → http://www.nea.gov.cn/20260319/xxx/c.html
                 full_url = f"{base_url}/{href[3:]}"
             else:
                 full_url = f"{base_url}/{href.lstrip('./')}"
             if full_url in seen_hrefs:
                 continue
             seen_hrefs.add(full_url)
-            links.append({"title": title, "url": full_url})
+            # 从列表行的 span.date 提取发布日期，格式如 (2026-03-27)
+            date_tag = li.find("span", class_="date")
+            list_date = date_tag.get_text(strip=True).strip("()") if date_tag else ""
+            links.append({"title": title, "url": full_url, "list_date": list_date})
 
         logger.info(f"国家能源局新闻列表获取成功：共 {len(links)} 条，抓取前 {max_articles} 篇正文")
 
@@ -451,7 +456,6 @@ def get_nea_news(max_articles: int = 5) -> list[dict]:
                 ar = requests.get(item["url"], headers=_HTTP_HEADERS, timeout=10)
                 ar.encoding = "utf-8"
                 asoup = BeautifulSoup(ar.text, "html.parser")
-                # 国家能源局文章结构：正文在 .article-content，时间在 span.times
                 content_div = (
                     asoup.select_one(".article-content")
                     or asoup.select_one(".article-box")
@@ -459,8 +463,23 @@ def get_nea_news(max_articles: int = 5) -> list[dict]:
                     or asoup.select_one("#zoom")
                 )
                 content = content_div.get_text(separator=" ", strip=True) if content_div else ""
-                time_tag = asoup.select_one("span.times, .time, .pubdate, .pub_time")
-                pub_time = time_tag.get_text(strip=True) if time_tag else ""
+                # 优先用列表页已提取的日期，其次从详情页多个选择器中找
+                pub_time = item.get("list_date", "")
+                if not pub_time:
+                    time_tag = (
+                        asoup.select_one("div.mheader div.info")
+                        or asoup.select_one("span.times")
+                        or asoup.select_one(".pubdate")
+                        or asoup.select_one(".pub_time")
+                    )
+                    if time_tag:
+                        pub_time = time_tag.get_text(strip=True).split("来源")[0].strip()
+                    if not pub_time:
+                        meta = asoup.find("meta", attrs={"name": "publishdate"})
+                        pub_time = meta["content"].strip() if meta and meta.get("content") else ""
+                if not pub_time:
+                    logger.debug(f"国家能源局文章无发布时间，跳过: {item['url']}")
+                    continue
                 results.append({
                     "标题": _truncate(item["title"], 200),
                     "内容": _truncate(content),
@@ -470,13 +489,6 @@ def get_nea_news(max_articles: int = 5) -> list[dict]:
                 })
             except Exception as e:
                 logger.debug(f"国家能源局文章正文获取失败 ({item['url']}): {e}")
-                results.append({
-                    "标题": _truncate(item["title"], 200),
-                    "内容": "",
-                    "来源": "国家能源局",
-                    "时间": "",
-                    "url": item["url"],
-                })
 
         return results
 
