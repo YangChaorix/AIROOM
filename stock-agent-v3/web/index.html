@@ -841,14 +841,20 @@ async function loadDates() {
   document.getElementById('dash-date-sel').innerHTML = opts;
   document.getElementById('news-date-sel').innerHTML = opts;
 
-  // 复盘日期选择器单独从有报告的日期里取，默认选最近工作日（排除周六/周日）
+  // 复盘日期选择器单独从有报告的日期里取，默认选最新日期
   const rv = await api('/api/review-reports?limit=60');
   const reviewDates = (rv.items || []).map(r => r.run_date).filter(Boolean);
-  const isWeekend = d => { const wd = new Date(d + 'T12:00:00').getDay(); return wd === 0 || wd === 6; };
-  const defaultReviewDate = reviewDates.find(d => !isWeekend(d)) || reviewDates[0];
-  const rvOpts = reviewDates.map(d => `<option value="${d}" ${d===defaultReviewDate?'selected':''}>${d}</option>`).join('');
+  const defaultReviewDate = reviewDates[0];
+  const rvOpts = reviewDates.map((d, i) => `<option value="${d}" ${i===0?'selected':''}>${d}</option>`).join('');
   document.getElementById('review-date-sel').innerHTML = rvOpts || '<option value="">暂无复盘报告</option>';
-  if (defaultReviewDate) S.reviewDate = defaultReviewDate;
+  if (defaultReviewDate) {
+    S.reviewDate = defaultReviewDate;
+    // 若当前已在复盘页（时序修复：initDates 完成前已渲染），立即刷新为正确日期
+    const reviewPage = document.getElementById('page-review');
+    if (reviewPage && reviewPage.classList.contains('active')) {
+      loadReview(defaultReviewDate);
+    }
+  }
 }
 
 function onDateChange() {
@@ -1684,11 +1690,20 @@ async function _loadReviewByRunId(date, runId) {
 
   const pct = (d.avg_pct_change || 0).toFixed(2);
   const sectors = Array.isArray(d.top_sectors) ? d.top_sectors : [];
+  // 市场数据的实际交易日：若 run_date 是周末则取上一个交易日
+  const _marketDay = (ds) => {
+    const dt = new Date(ds + 'T12:00:00');
+    const wd = dt.getDay();
+    if (wd === 6) dt.setDate(dt.getDate() - 1); // 周六→周五
+    else if (wd === 0) dt.setDate(dt.getDate() - 2); // 周日→周五
+    return dt.toISOString().slice(0, 10);
+  };
+  const marketDate = _marketDay(d.run_date);
   const isFriday = new Date(d.run_date + 'T12:00:00').getDay() === 5;
 
   document.getElementById('review-stats').innerHTML = `
-    <div class="card card-sm"><div class="card-title">📈 上涨家数</div><div class="stat-value" style="color:var(--red)">${d.market_up_count ?? '-'}</div><div class="stat-sub">${d.run_date} 上涨个股</div></div>
-    <div class="card card-sm"><div class="card-title">📉 下跌家数</div><div class="stat-value" style="color:var(--green)">${d.market_down_count ?? '-'}</div><div class="stat-sub">${d.run_date} 下跌个股</div></div>
+    <div class="card card-sm"><div class="card-title">📈 上涨家数</div><div class="stat-value" style="color:var(--red)">${d.market_up_count ?? '-'}</div><div class="stat-sub">${marketDate} 上涨个股</div></div>
+    <div class="card card-sm"><div class="card-title">📉 下跌家数</div><div class="stat-value" style="color:var(--green)">${d.market_down_count ?? '-'}</div><div class="stat-sub">${marketDate} 下跌个股</div></div>
     <div class="card card-sm"><div class="card-title">📊 涨跌比</div><div class="stat-value" style="color:${pct >= 0 ? 'var(--red)' : 'var(--green)'}">${(pct >= 0 ? '+' : '') + pct + '%'}</div><div class="stat-sub">全市场涨跌比</div></div>
     ${statCard('是否周五', isFriday ? '是 🎉' : '否', isFriday ? '包含周末分析' : '普通交易日', '📅')}
   `;

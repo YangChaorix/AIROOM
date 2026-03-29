@@ -151,6 +151,10 @@ class AgentConfig:
     news_max_age_days: int = field(
         default_factory=lambda: int(os.getenv("NEWS_MAX_AGE_DAYS", "3"))
     )
+    # 精筛同行业最多推荐支数（0=不限制）
+    screener_max_per_industry: int = field(
+        default_factory=lambda: int(os.getenv("SCREENER_MAX_PER_INDUSTRY", "3"))
+    )
     # APScheduler 触发时段（APScheduler hour 表达式，如 "6-17"）
     collect_schedule_hours: str = field(
         default_factory=lambda: os.getenv("COLLECT_SCHEDULE_HOURS", "6-17")

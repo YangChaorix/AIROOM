@@ -415,67 +415,53 @@ def run_screener_agent(trigger_result: dict) -> dict:
         _merge_batch(batch)
         batches_run += 1
 
-    # 不足 top_n 则补跑一批（最多 1 次），使用专用 prompt 告知已选列表并允许低分纳入
-    if len(collected) < top_n:
-        shortage = top_n - len(collected)
-        current = len(collected)
-        already_selected = [v for k, v in collected.items() if not k.startswith("_nocode_")]
-        selected_summary = "\n".join(
-            f"- {item.get('name', '')}({item.get('code', '')}) 总分={_get_total(item)}"
-            for item in already_selected
-        )
-        fill_human = f"""今日日期：{today}
-
-【触发Agent输出（初筛结果）】
-{trigger_summary}
-
-【各企业量化数据】
-{company_data_text}
-
-【已选中的股票（严禁重复输出）】
-{selected_summary}
-
-以上 {len(already_selected)} 家企业已入选，请从剩余候选中再选出 {shortage} 家，严格按照JSON格式输出。
-注意：
-- ⚠️ 严禁输出上面已选中的股票，代码重复视为无效
-- 此轮为补充选股，候选不足时允许纳入总分 6~8 分的企业
-- 对于没有股票代码的企业，请根据你的知识推断其股票代码进行评分
-- 只输出 JSON，不要多余文字
-- 每个维度理由控制在15字以内，推荐理由控制在60字以内
-- ⚠️ 特别注意D2维度：原材料/能源涨价时，下游制造企业是成本承压方，D2评0分"""
-        logger.info(f"去重后仅 {current} 条，不足 {top_n}，补跑一批补充 {shortage} 条...")
-        messages = [SystemMessage(content=_screener_prompt), HumanMessage(content=fill_human)]
-        resp = llm.invoke(messages)
-        logger.debug(f"【LLM 输出 - 补充批 原始响应】\n" + resp.content)
-        fill_result = _parse_screener_json(resp.content, today)
-        batch = fill_result.get("top20", [])
-        for item in batch:
-            logger.info(
-                f"  [补充批] #{item.get('rank','?')} {item.get('name','')}({item.get('code','')}) "
-                f"总分={_get_total(item)} 触发={item.get('trigger_reason','')[:30]}"
-            )
-        logger.info(f"补充批完成，得到 {len(batch)} 条")
-        _merge_batch(batch)
-
-    # 按总分降序排列并重新编号
+    # 按总分降序排列
     all_items = sorted(collected.values(), key=_get_total, reverse=True)
-    for idx, item in enumerate(all_items, 1):
-        item["rank"] = idx
 
-    # 回填 trigger_index：从 company_data_list 构建 code → trigger_index 映射
-    code_to_trigger_index = {
-        c.get("代码", c.get("code", "")): c.get("trigger_index")
-        for c in company_data_list
-        if c.get("trigger_index") is not None
-    }
+    # 回填 trigger_index 和 industry：从 company_data_list 构建 code → 映射
+    code_to_trigger_index = {}
+    code_to_industry = {}
+    for c in company_data_list:
+        code = c.get("代码", c.get("code", ""))
+        if not code:
+            continue
+        if c.get("trigger_index") is not None:
+            code_to_trigger_index[code] = c["trigger_index"]
+        industry_str = c.get("industry", "")
+        if industry_str:
+            code_to_industry[code] = industry_str.split(",")[0].strip()
+
     for item in all_items:
         code = item.get("code", "")
         if code and code in code_to_trigger_index:
             item["trigger_index"] = code_to_trigger_index[code]
+
+    # 同行业最多保留 MAX_PER_INDUSTRY 支（已按总分降序，自然保留高分）；0=不限制
+    MAX_PER_INDUSTRY = settings.agent.screener_max_per_industry
+    industry_count: dict = {}
+    capped_items = []
+    for item in all_items:
+        code = item.get("code", "")
+        industry = code_to_industry.get(code, "")
+        if industry:
+            cnt = industry_count.get(industry, 0)
+            if cnt >= MAX_PER_INDUSTRY:
+                logger.info(
+                    f"  [行业上限] {item.get('name','')}({code}) 行业={industry} "
+                    f"已选{cnt}支，跳过"
+                )
+                continue
+            industry_count[industry] = cnt + 1
+        capped_items.append(item)
+
+    all_items = capped_items
+    for idx, item in enumerate(all_items, 1):
+        item["rank"] = idx
+
     result = {
         "date": today,
         "top20": all_items,
-        "analysis_summary": f"共输出 {len(all_items)} 家企业（{batches_run} 批{'，含补充批' if len(collected) >= top_n and batches_run > batches_needed else ''}，去重保留高分后 {len(all_items)} 条）",
+        "analysis_summary": f"共输出 {len(all_items)} 家企业（{batches_run} 批，去重+行业上限后 {len(all_items)} 条）",
     }
 
     result["date"] = today
