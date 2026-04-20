@@ -1,20 +1,38 @@
-/* 新闻流 Tab：News River —— 未消费/已消费过滤 chip + 时间段分组。 */
-import { useEffect, useMemo, useState } from "react";
+/* 新闻流 Tab：News River —— 日期选择 + 来源下拉 + 消费状态 chip。 */
+import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import DatePicker, { toDateKey } from "../../components/DatePicker";
 
-export default function NewsTab() {
+export default function NewsTab({ onToast }) {
   const [list, setList] = useState([]);
   const [stats, setStats] = useState(null);
-  const [filter, setFilter] = useState("all"); // all / unconsumed / consumed / source:xxx
+  const [consumedFilter, setConsumedFilter] = useState("all"); // all / unconsumed / consumed
+  const [source, setSource] = useState("");  // "" = 全部来源
+  const [date, setDate] = useState(toDateKey(new Date()));
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
+
+  async function handleFetchAll() {
+    setFetching(true);
+    try {
+      const res = await api.runAllChannels();
+      onToast?.(`已触发 ${res.channels?.length || 0} 个渠道抓取（后台进行，去重已保证）`);
+      setTimeout(refresh, 3000);
+      setTimeout(refresh, 8000);
+    } catch (e) {
+      onToast?.(`触发失败：${e.message}`);
+    } finally {
+      setTimeout(() => setFetching(false), 3000);
+    }
+  }
 
   async function refresh() {
     setLoading(true);
     try {
-      const params = { limit: 200 };
-      if (filter === "unconsumed") params.consumed = false;
-      else if (filter === "consumed") params.consumed = true;
-      else if (filter.startsWith("source:")) params.source = filter.slice(7);
+      const params = { limit: 300, date };
+      if (consumedFilter === "unconsumed") params.consumed = false;
+      else if (consumedFilter === "consumed") params.consumed = true;
+      if (source) params.source = source;
       setList(await api.listNews(params));
     } catch {}
     finally { setLoading(false); }
@@ -22,17 +40,14 @@ export default function NewsTab() {
 
   useEffect(() => {
     api.newsStats().then(setStats).catch(() => {});
-    refresh();
-    // eslint-disable-next-line
-  }, [filter]);
+  }, []);
 
   useEffect(() => {
+    refresh();
     const t = setInterval(refresh, 8000);
     return () => clearInterval(t);
     // eslint-disable-next-line
-  }, [filter]);
-
-  const grouped = useMemo(() => groupByDay(list), [list]);
+  }, [consumedFilter, source, date]);
 
   const sources = stats ? Object.keys(stats.by_source) : [];
 
@@ -41,35 +56,49 @@ export default function NewsTab() {
       <div style={{ display: "flex", alignItems: "center", gap: "var(--gap-sm)", flexWrap: "wrap", marginBottom: 10 }}>
         <h3 style={{ margin: 0 }}>📰 新闻流</h3>
         <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-          总 {stats?.total ?? 0} 条 · {loading ? "刷新中…" : `显示 ${list.length} 条`}
+          {loading ? "刷新中…" : `${list.length} 条`}
         </span>
+        <span style={{ flex: 1 }} />
+        <button className="btn" onClick={handleFetchAll} disabled={fetching}
+          style={{ fontSize: 12, padding: "5px 12px" }}>
+          {fetching ? "抓取中…" : "🔄 立即抓取全部渠道"}
+        </button>
       </div>
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "var(--gap-md)" }}>
-        <Chip active={filter === "all"} onClick={() => setFilter("all")}>全部</Chip>
-        <Chip active={filter === "unconsumed"} onClick={() => setFilter("unconsumed")} color="var(--agent-trigger)">
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+        <DatePicker value={date} onChange={setDate} />
+        <span style={{ borderLeft: "1px solid var(--border)", height: 16 }} />
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>来源</span>
+          <select value={source} onChange={(e) => setSource(e.target.value)}
+            style={{ padding: "4px 8px", fontSize: 12, borderRadius: 6,
+              border: "1px solid var(--border)", background: "var(--card)",
+              color: "var(--text)", cursor: "pointer" }}>
+            <option value="">全部</option>
+            {sources.map((s) => (
+              <option key={s} value={s}>
+                {s}{stats?.by_source?.[s] ? ` (${stats.by_source[s]})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+        <span style={{ borderLeft: "1px solid var(--border)", height: 16 }} />
+        <Chip active={consumedFilter === "all"} onClick={() => setConsumedFilter("all")}>全部</Chip>
+        <Chip active={consumedFilter === "unconsumed"} onClick={() => setConsumedFilter("unconsumed")} color="var(--agent-trigger)">
           🔵 未消费
         </Chip>
-        <Chip active={filter === "consumed"} onClick={() => setFilter("consumed")} color="var(--success)">
+        <Chip active={consumedFilter === "consumed"} onClick={() => setConsumedFilter("consumed")} color="var(--success)">
           ✓ 已消费
         </Chip>
-        <span style={{ borderLeft: "1px solid var(--border)", margin: "0 4px" }} />
-        {sources.map((s) => (
-          <Chip key={s} active={filter === `source:${s}`} onClick={() => setFilter(`source:${s}`)}>
-            {s}
-          </Chip>
-        ))}
       </div>
 
       <div style={{ overflow: "auto", flex: 1 }}>
-        {Object.keys(grouped).length === 0 ? (
+        {list.length === 0 ? (
           <div style={{ color: "var(--text-muted)", textAlign: "center", padding: 40 }}>
-            {loading ? "加载中…" : "暂无新闻 · Scheduler 下次抓取时会滚入"}
+            {loading ? "加载中…" : "该日期暂无新闻"}
           </div>
         ) : (
-          Object.entries(grouped).map(([day, items]) => (
-            <DayGroup key={day} day={day} items={items} />
-          ))
+          list.map((n) => <NewsCard key={n.id} n={n} />)
         )}
       </div>
     </div>
@@ -92,19 +121,6 @@ function Chip({ active, onClick, children, color }) {
     >
       {children}
     </button>
-  );
-}
-
-function DayGroup({ day, items }) {
-  return (
-    <div style={{ marginBottom: "var(--gap-md)" }}>
-      <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-        — {day} · {items.length} 条 —
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-        {items.map((n) => <NewsCard key={n.id} n={n} />)}
-      </div>
-    </div>
   );
 }
 
@@ -144,17 +160,3 @@ function NewsCard({ n }) {
   );
 }
 
-function groupByDay(items) {
-  const today = new Date().toDateString();
-  const yesterday = new Date(Date.now() - 86400000).toDateString();
-  const groups = {};
-  for (const it of items) {
-    const d = new Date(it.created_at);
-    const key = d.toDateString() === today ? "今日" :
-      d.toDateString() === yesterday ? "昨日" :
-      `${d.getMonth() + 1}/${d.getDate()}`;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(it);
-  }
-  return groups;
-}

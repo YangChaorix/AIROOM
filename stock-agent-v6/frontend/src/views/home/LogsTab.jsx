@@ -1,18 +1,21 @@
-/* 日志 Tab：按 level/source 过滤的 system_logs 流。 */
+/* 日志 Tab：按日期 / level / source 过滤的 system_logs 流。 */
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import DatePicker, { toDateKey } from "../../components/DatePicker";
 
 export default function LogsTab() {
   const [logs, setLogs] = useState([]);
   const [level, setLevel] = useState("all");
   const [sourcePrefix, setSourcePrefix] = useState("");
+  const [date, setDate] = useState(toDateKey(new Date()));
 
   async function refresh() {
     try {
       setLogs(await api.listLogs({
         level: level === "all" ? undefined : level,
         source_prefix: sourcePrefix || undefined,
-        limit: 100,
+        date,
+        limit: 200,
       }));
     } catch {}
   }
@@ -22,22 +25,34 @@ export default function LogsTab() {
     const t = setInterval(refresh, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line
-  }, [level, sourcePrefix]);
+  }, [level, sourcePrefix, date]);
 
   return (
     <div className="card" style={{ height: "calc(100vh - 170px)", display: "flex", flexDirection: "column" }}>
       <h3 style={{ marginTop: 0 }}>📜 系统日志</h3>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+        <DatePicker value={date} onChange={setDate} />
+        <span style={{ borderLeft: "1px solid var(--border)", height: 16 }} />
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>来源</span>
+          <select value={sourcePrefix} onChange={(e) => setSourcePrefix(e.target.value)}
+            style={{ padding: "4px 8px", fontSize: 12, borderRadius: 6,
+              border: "1px solid var(--border)", background: "var(--card)",
+              color: "var(--text)", cursor: "pointer" }}>
+            <option value="">全部</option>
+            <option value="scheduler">scheduler.*</option>
+            <option value="agents">agents.*</option>
+            <option value="main">main.*</option>
+          </select>
+        </div>
+      </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: "var(--gap-md)", flexWrap: "wrap" }}>
         <Chip active={level === "all"}   onClick={() => setLevel("all")}>all</Chip>
         <Chip active={level === "info"}  onClick={() => setLevel("info")}  color="var(--text-muted)">ⓘ info</Chip>
         <Chip active={level === "warning"} onClick={() => setLevel("warning")} color="var(--warning)">⚠️ warning</Chip>
         <Chip active={level === "error"} onClick={() => setLevel("error")} color="var(--error)">❌ error</Chip>
-        <span style={{ borderLeft: "1px solid var(--border)", margin: "0 4px" }} />
-        <Chip active={sourcePrefix === ""} onClick={() => setSourcePrefix("")}>all sources</Chip>
-        <Chip active={sourcePrefix === "scheduler"} onClick={() => setSourcePrefix("scheduler")}>scheduler.*</Chip>
-        <Chip active={sourcePrefix === "agents"} onClick={() => setSourcePrefix("agents")}>agents.*</Chip>
-        <Chip active={sourcePrefix === "main"} onClick={() => setSourcePrefix("main")}>main.*</Chip>
       </div>
 
       <div style={{ overflow: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>

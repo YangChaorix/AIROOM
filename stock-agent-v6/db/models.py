@@ -120,6 +120,9 @@ class Run(Base):
 # ─────────────────────────────────────────────────────────────
 class Trigger(Base):
     __tablename__ = "triggers"
+    __table_args__ = (
+        Index("ix_triggers_dedup", "industry", "type", "mode", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     trigger_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
@@ -144,6 +147,9 @@ class Trigger(Base):
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     # priority 1-10，Trigger Agent 打分后写入；main.py 消费时按 priority DESC + created_at ASC
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # ── Phase 6.1：主题级去重计数（(industry+type+日期) 同主题再次命中只累加，不新建）──
+    duplicate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
 
 # ─────────────────────────────────────────────────────────────

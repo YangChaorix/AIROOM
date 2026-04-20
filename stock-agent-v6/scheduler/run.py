@@ -67,6 +67,12 @@ def _run_once(target: str) -> None:
             logger.info(f"← {a['name']} 结果: {fn(**a.get('kwargs', {}))}")
         return
 
+    if target == "channels":
+        for ch in channels:
+            logger.info(f"→ 立即执行渠道 {ch['name']}")
+            logger.info(f"← {ch['name']} 结果: {fetch_channel(ch)}")
+        return
+
     if target == "agents":
         for a in agents:
             logger.info(f"→ 立即执行 Agent {a['name']}")

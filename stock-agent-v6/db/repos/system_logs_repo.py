@@ -63,12 +63,17 @@ def log_exception(source: str, exc: BaseException, message: Optional[str] = None
 
 
 def list_recent(level: Optional[str] = None, source_prefix: Optional[str] = None,
-                limit: int = 50) -> List[Dict[str, Any]]:
+                date: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    from datetime import datetime, timedelta
     stmt = select(SystemLog).order_by(SystemLog.created_at.desc()).limit(limit)
     if level:
         stmt = stmt.where(SystemLog.level == level)
     if source_prefix:
         stmt = stmt.where(SystemLog.source.like(f"{source_prefix}%"))
+    if date:
+        day_start = datetime.strptime(date, "%Y-%m-%d")
+        day_end = day_start + timedelta(days=1)
+        stmt = stmt.where(SystemLog.created_at >= day_start, SystemLog.created_at < day_end)
     with get_session() as sess:
         rows = sess.scalars(stmt).all()
         return [

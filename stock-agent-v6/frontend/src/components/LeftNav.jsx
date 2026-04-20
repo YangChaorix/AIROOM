@@ -21,9 +21,8 @@ function Counter({ label, count, color }) {
   );
 }
 
-export default function LeftNav({ onConsume }) {
+export default function LeftNav() {
   const [stats, setStats] = useState(null);
-  const [busy, setBusy] = useState(false);
 
   async function refresh() {
     try { setStats(await api.getInfo()); } catch {}
@@ -33,12 +32,6 @@ export default function LeftNav({ onConsume }) {
     const t = setInterval(refresh, 4000);
     return () => clearInterval(t);
   }, []);
-
-  async function handleConsume() {
-    setBusy(true);
-    try { await api.consume(1); onConsume?.(); }
-    finally { setTimeout(() => setBusy(false), 1500); }
-  }
 
   return (
     <div style={{ width: 160, borderRight: "1px solid var(--border)", padding: "var(--gap-md)", display: "flex", flexDirection: "column", gap: "var(--gap-md)" }}>
@@ -73,10 +66,6 @@ export default function LeftNav({ onConsume }) {
         <Counter label="🟡 Process" count={stats?.queue_processing} color="var(--warning)" />
         <Counter label="✓ Runs" count={stats?.runs_total} color="var(--success)" />
         <Counter label="📰 News" count={stats?.news_total} color="var(--text-muted)" />
-        <button className="btn" style={{ marginTop: 10, width: "100%", fontSize: 12, padding: "6px 8px" }}
-          onClick={handleConsume} disabled={busy || !stats?.queue_pending}>
-          {busy ? "已下发…" : "▶ 消费 1 个"}
-        </button>
       </div>
     </div>
   );

@@ -27,7 +27,7 @@ export default function NewsCenter({ onToast }) {
         ))}
       </div>
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-        {tab === "news"  && <NewsTab />}
+        {tab === "news"  && <NewsTab onToast={onToast} />}
         {tab === "queue" && <QueueTab onToast={onToast} />}
         {tab === "logs"  && <LogsTab />}
       </div>

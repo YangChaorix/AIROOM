@@ -18,7 +18,12 @@
       "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(c\\) for c in data[:3]]\")",
       "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(c['id'], c.get\\('active'\\)\\) for c in data[:4]]\")",
       "Bash(curl -s http://localhost:8000/api/recommendations)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(alembic heads *)",
+      "Bash(python -m alembic heads)",
+      "Bash(python3 -m alembic heads)",
+      "Bash(.venv/bin/alembic current *)",
+      "Bash(kill 55321)"
     ]
   }
 }

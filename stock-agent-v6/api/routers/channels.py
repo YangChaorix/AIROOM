@@ -57,3 +57,19 @@ def run_channel_now(name: str):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     return {"status": "started", "pid": proc.pid, "channel": name}
+
+
+@router.post("/channels/run-all")
+def run_all_channels():
+    """立即抓取所有启用的渠道。子进程异步跑，不阻塞。
+
+    去重由 news_items.content_hash 唯一约束保证，重复点击只会多一次空跑。
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "scheduler/run.py", "--once", "channels"],
+        cwd=str(_ROOT),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    cfg = _load_cfg()
+    enabled = [c["name"] for c in cfg.get("channels", []) if c.get("enabled", True)]
+    return {"status": "started", "pid": proc.pid, "channels": enabled}

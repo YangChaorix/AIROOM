@@ -19,7 +19,7 @@ export default function App() {
       <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
         <TopBar onToast={setToast} />
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-          <LeftNav onConsume={() => setToast("已发起消费")} />
+          <LeftNav />
           <main style={{ flex: 1, overflow: "auto" }}>
             <Routes>
               <Route path="/"            element={<Recommendations />} />
