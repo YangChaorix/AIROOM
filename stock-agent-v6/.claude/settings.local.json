@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/pip install *)",
+      "Bash(.venv/bin/python *)",
+      "Bash(.venv/bin/alembic init *)",
+      "Bash(sqlite3 *)",
+      "Bash(.venv/bin/alembic downgrade *)",
+      "Bash(.venv/bin/alembic upgrade *)",
+      "Bash(pkill -f \"pytest tests/ -v -m not real_data\")",
+      "Bash(.venv/bin/alembic revision *)",
+      "Bash(npm run *)",
+      "Bash(npm --prefix frontend install --silent)",
+      "Bash(npm --prefix /Users/yangchao/workspace/ai/AIROOM/stock-agent-v6/frontend install)",
+      "Bash(npm --prefix /Users/yangchao/workspace/ai/AIROOM/stock-agent-v6/frontend run build)",
+      "Bash(npx vite *)"
+    ]
+  }
+}

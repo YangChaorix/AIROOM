@@ -1,0 +1,75 @@
+{
+  "_comment": "新闻渠道抓取配置。改这里即改频率/启用开关/新增渠道，不改代码。cron 语法遵循 APScheduler：hour/minute/day_of_week 等字段，留空表示通配。",
+  "_timezone": "Asia/Shanghai",
+
+  "channels": [
+    {
+      "name": "news_cctv",
+      "description": "央视网时政新闻：日更 1-2 条重大时政，更新慢",
+      "enabled": true,
+      "akshare_func": "news_cctv",
+      "cron": {"hour": 8, "minute": 0},
+      "source_label": "央视网"
+    },
+    {
+      "name": "stock_info_cjzc_em",
+      "description": "东方财富财经早餐：每天早 6:00 发布一次",
+      "enabled": true,
+      "akshare_func": "stock_info_cjzc_em",
+      "cron": {"hour": 7, "minute": 0},
+      "source_label": "东财-财经早餐"
+    },
+    {
+      "name": "stock_info_global_em",
+      "description": "东方财富全球资讯：盘中持续更新（盘中 9-16 点每小时一次，盘后每 3 小时一次）",
+      "enabled": true,
+      "akshare_func": "stock_info_global_em",
+      "cron": {"hour": "9-16", "minute": 5},
+      "source_label": "东财-全球资讯"
+    },
+    {
+      "name": "stock_info_global_em_offhour",
+      "description": "东财全球资讯：盘后补充（晚上/凌晨每 3 小时一次，兜底夜间重大新闻）",
+      "enabled": true,
+      "akshare_func": "stock_info_global_em",
+      "cron": {"hour": "0,3,6,17,20,23", "minute": 10},
+      "source_label": "东财-全球资讯"
+    },
+    {
+      "name": "news_economic_baidu",
+      "description": "百度经济事件日历：美国/中国/欧洲的经济数据发布（非传统新闻，但影响市场）",
+      "enabled": true,
+      "akshare_func": "news_economic_baidu",
+      "cron": {"hour": 8, "minute": 15},
+      "source_label": "百度-经济日历",
+      "adapter": "economic_event"
+    },
+    {
+      "name": "news_trade_notify_suspend_baidu",
+      "description": "百度停牌/复牌公告：风险预警（C6 转折事件来源）",
+      "enabled": true,
+      "akshare_func": "news_trade_notify_suspend_baidu",
+      "cron": {"hour": "9,12,15", "minute": 0},
+      "source_label": "百度-停牌公告",
+      "adapter": "suspend_notice"
+    },
+    {
+      "name": "stock_research_report_em",
+      "description": "东财券商研报：机构观点 + 评级变化（200+ 条，每天刷新 1 次即可）",
+      "enabled": true,
+      "akshare_func": "stock_research_report_em",
+      "cron": {"hour": 9, "minute": 30},
+      "source_label": "东财-券商研报",
+      "adapter": "research_report"
+    }
+  ],
+
+  "_how_to_add_channel": [
+    "1. 确认 AkShare 里有对应函数（ak.xxx()）",
+    "2. 在 channels 数组加一条：name（唯一）、akshare_func、cron、source_label",
+    "3. 如果接口返回的列名与通用模板（标题/摘要）不同，加 adapter 字段：",
+    "   - generic（默认）/ economic_event / suspend_notice / research_report",
+    "   - 新列名模式请在 scheduler/tasks.py::_df_to_items 里加新 adapter 分支",
+    "4. enabled=true，重启 scheduler 进程"
+  ]
+}

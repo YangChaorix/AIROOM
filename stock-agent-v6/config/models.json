@@ -1,0 +1,26 @@
+{
+  "supervisor": {
+    "provider": "deepseek",
+    "model": "deepseek-reasoner",
+    "temperature": 1.0,
+    "_rationale": "推理模型；每日 1 次，决策质量优先（DeepSeek R1 推理模型）"
+  },
+  "research": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "temperature": 0.3,
+    "_rationale": "强指令模型；工具调用稳定（DeepSeek V3 对话模型）"
+  },
+  "screener": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "temperature": 0.2,
+    "_rationale": "结构化打分"
+  },
+  "skeptic": {
+    "provider": "deepseek",
+    "model": "deepseek-reasoner",
+    "temperature": 1.0,
+    "_rationale": "推理模型；找漏洞"
+  }
+}

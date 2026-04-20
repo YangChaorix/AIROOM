@@ -1,0 +1,28 @@
+{
+  "_comment": "Agent 级定时任务配置。新闻抓取在 news_channels.json；本文件管 Agent 任务（如 Trigger Agent 从 news 队列生成 triggers）。",
+  "_timezone": "Asia/Shanghai",
+
+  "agents": [
+    {
+      "name": "trigger",
+      "description": "从未消费的 news_items 队列中按用户关注方向 LLM 筛选，生成 triggers（status=pending）入事件队列",
+      "enabled": true,
+      "task": "run_trigger",
+      "cron": {"minute": "5,35"},
+      "kwargs": {
+        "hours": 6,
+        "user_id": "dad_001"
+      },
+      "_kwargs_doc": {
+        "hours": "看多少小时窗口内的未消费 news",
+        "user_id": "按哪个用户的 conditions 筛选优先级"
+      }
+    }
+  ],
+
+  "_how_to_add_agent": [
+    "1. 在 scheduler/tasks.py 里加任务函数（接 **kwargs）",
+    "2. 在本文件 agents[] 加一条，task 字段引用函数名",
+    "3. enabled=true，重启 scheduler"
+  ]
+}

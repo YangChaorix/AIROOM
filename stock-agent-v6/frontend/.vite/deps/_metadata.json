@@ -1,0 +1,40 @@
+{
+  "hash": "7294465b",
+  "configHash": "1d329916",
+  "lockfileHash": "21d0c617",
+  "browserHash": "74175549",
+  "optimized": {
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "31904aaa",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "2b0fc93f",
+      "needsInterop": true
+    },
+    "react-router-dom": {
+      "src": "../../node_modules/react-router-dom/dist/index.js",
+      "file": "react-router-dom.js",
+      "fileHash": "811ac42e",
+      "needsInterop": false
+    },
+    "@monaco-editor/react": {
+      "src": "../../node_modules/@monaco-editor/react/dist/index.mjs",
+      "file": "@monaco-editor_react.js",
+      "fileHash": "db3bc48b",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-Q4OUII2S": {
+      "file": "chunk-Q4OUII2S.js"
+    },
+    "chunk-M53EBH4A": {
+      "file": "chunk-M53EBH4A.js"
+    }
+  }
+}

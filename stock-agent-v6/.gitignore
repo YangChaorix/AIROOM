@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+frontend/.parcel-cache/
+
+# Database
+data/stock_agent.db
+data/stock_agent.db-journal
+data/stock_agent.db-wal
+data/stock_agent.db-shm
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Outputs / runtime data
+outputs/runs/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/

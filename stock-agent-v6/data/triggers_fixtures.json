@@ -1,0 +1,32 @@
+{
+  "default": {
+    "trigger_id": "T-20260418-001",
+    "headline": "国家发改委发布储能行业补贴实施细则，明确 2026 年起每千瓦时补贴 0.35 元，持续 3 年",
+    "industry": "新能源储能",
+    "type": "policy_landing",
+    "strength": "high",
+    "source": "发改委官网",
+    "published_at": "2026-04-18 08:30:00",
+    "summary": "政策层面明确落地，补贴力度超市场预期，利好储能系统集成商和电池龙头企业。关键词：补贴、实施细则、落地"
+  },
+  "strong_policy": {
+    "trigger_id": "T-STRONG-POLICY",
+    "headline": "央行联合银保监会发布碳中和专项再贷款 3000 亿，支持新能源产业链",
+    "industry": "新能源",
+    "type": "policy_landing",
+    "strength": "high",
+    "source": "央行+银保监会联合公告",
+    "published_at": "2026-04-18 09:00:00",
+    "summary": "货币政策定向支持，规模巨大，行业资金面明显改善。关键词：再贷款、碳中和、新能源"
+  },
+  "weak_noise": {
+    "trigger_id": "T-WEAK-NOISE",
+    "headline": "某地方媒体报道一家小型储能企业获得订单（金额未披露）",
+    "industry": "储能",
+    "type": "minor_news",
+    "strength": "low",
+    "source": "地方晚报",
+    "published_at": "2026-04-18 07:00:00",
+    "summary": "个案订单，无行业级意义，信息强度低。关键词：订单、储能"
+  }
+}

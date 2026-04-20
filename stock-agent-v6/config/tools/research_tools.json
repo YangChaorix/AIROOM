@@ -1,0 +1,87 @@
+[
+  {
+    "name": "search_news_from_db",
+    "description": "按关键词+时间窗口从已入库新闻中检索。MVP 返回 mock。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keywords": {
+          "type": "string",
+          "description": "关键词，空格分隔"
+        },
+        "hours": {
+          "type": "integer",
+          "description": "回溯小时数",
+          "default": 48
+        }
+      },
+      "required": [
+        "keywords"
+      ]
+    }
+  },
+  {
+    "name": "akshare_industry_leaders",
+    "description": "查询某行业的龙头企业名单和市占率。MVP 返回 mock。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "industry": {
+          "type": "string",
+          "description": "行业名称"
+        }
+      },
+      "required": [
+        "industry"
+      ]
+    }
+  },
+  {
+    "name": "stock_financial_data",
+    "description": "查询某股票的财务数据（营收、净利、PE）。MVP 返回 mock。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "6 位股票代码"
+        }
+      },
+      "required": [
+        "code"
+      ]
+    }
+  },
+  {
+    "name": "stock_holder_structure",
+    "description": "查询某股票的前十大股东构成和聪明钱占比。MVP 返回 mock。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "6 位股票代码"
+        }
+      },
+      "required": [
+        "code"
+      ]
+    }
+  },
+  {
+    "name": "price_trend_data",
+    "description": "查询某产品/商品的近期价格走势。MVP 返回 mock。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product": {
+          "type": "string",
+          "description": "产品或商品名"
+        }
+      },
+      "required": [
+        "product"
+      ]
+    }
+  }
+]
