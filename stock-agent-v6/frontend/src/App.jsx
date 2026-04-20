@@ -5,10 +5,11 @@ import TopBar from "./components/TopBar";
 import LeftNav from "./components/LeftNav";
 import Toast from "./components/Toast";
 
-import Home from "./views/Home";
+import Recommendations from "./views/Recommendations";
 import RunDetail from "./views/RunDetail";
 import StockAnalysis from "./views/StockAnalysis";
 import Config from "./views/Config";
+import NewsCenter from "./views/NewsCenter";
 
 export default function App() {
   const [toast, setToast] = useState("");
@@ -21,11 +22,12 @@ export default function App() {
           <LeftNav onConsume={() => setToast("已发起消费")} />
           <main style={{ flex: 1, overflow: "auto" }}>
             <Routes>
-              <Route path="/" element={<Home onToast={setToast} />} />
-              <Route path="/runs" element={<RunDetail />} />
-              <Route path="/runs/:id" element={<RunDetail />} />
-              <Route path="/stock" element={<StockAnalysis onToast={setToast} />} />
-              <Route path="/config" element={<Config onToast={setToast} />} />
+              <Route path="/"            element={<Recommendations />} />
+              <Route path="/runs"        element={<RunDetail />} />
+              <Route path="/runs/:id"    element={<RunDetail />} />
+              <Route path="/stock"       element={<StockAnalysis onToast={setToast} />} />
+              <Route path="/config"      element={<Config onToast={setToast} />} />
+              <Route path="/news"        element={<NewsCenter onToast={setToast} />} />
             </Routes>
           </main>
         </div>

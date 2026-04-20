@@ -42,6 +42,7 @@ def load_conditions(sess: Session, user_id: str, active_only: bool = True) -> Li
             "description": c.description,
             "weight": c.weight,
             "keywords": json.loads(c.keywords_json) if c.keywords_json else None,
+            "active": bool(c.active),
         }
         for c in conditions
     ]

@@ -22,28 +22,33 @@ def update_condition(
     user_id: str = DEFAULT_USER_ID,
     db: Session = Depends(get_db),
 ):
-    """仅支持改权重 / 软删（active=false/true）。"""
-    if "weight" in payload:
-        ok = users_repo.update_condition_weight(db, user_id, condition_id, float(payload["weight"]))
-        if not ok:
-            raise HTTPException(404, f"condition {condition_id} not found")
-        db.commit()
+    """支持改 weight / active / name / description / keywords。"""
+    from db.models import Condition
+    from sqlalchemy import select
+    import json as _json
 
-    if "active" in payload:
-        # 软删：active=False；恢复：True（但 soft_delete 只支持置 False，需要扩展）
-        from db.models import Condition
-        from sqlalchemy import select
-        existing = db.scalar(
-            select(Condition).where(
-                Condition.user_id == user_id,
-                Condition.condition_id == condition_id,
-            )
+    existing = db.scalar(
+        select(Condition).where(
+            Condition.user_id == user_id,
+            Condition.condition_id == condition_id,
         )
-        if not existing:
-            raise HTTPException(404, f"condition {condition_id} not found")
-        existing.active = bool(payload["active"])
-        db.commit()
+    )
+    if not existing:
+        raise HTTPException(404, f"condition {condition_id} not found")
 
+    if "weight" in payload:
+        existing.weight = float(payload["weight"]) if payload["weight"] is not None else None
+    if "active" in payload:
+        existing.active = bool(payload["active"])
+    if "name" in payload:
+        existing.name = str(payload["name"])
+    if "description" in payload:
+        existing.description = str(payload["description"])
+    if "keywords" in payload:
+        kw = payload["keywords"]
+        existing.keywords_json = _json.dumps(kw, ensure_ascii=False) if kw else None
+
+    db.commit()
     return {"status": "ok", "condition_id": condition_id}
 
 

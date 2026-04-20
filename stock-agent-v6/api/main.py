@@ -40,6 +40,7 @@ from api.routers import (  # noqa: E402
     news,
     prompts,
     queue,
+    recommendations,
     runs,
     stocks,
     stream,
@@ -90,7 +91,7 @@ def info():
 
 
 # 挂载 10 个 router
-for r in (runs, queue, stocks, conditions, channels, prompts, agents, logs, news, stream):
+for r in (runs, queue, stocks, conditions, channels, prompts, agents, logs, news, stream, recommendations):
     app.include_router(r.router)
 
 
