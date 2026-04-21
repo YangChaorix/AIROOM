@@ -424,6 +424,18 @@ function ChannelRow({ c, busy, onSave, onRunNow }) {
             adapter: {c.adapter}
           </span>
         )}
+        {c.fetcher && (
+          <span title={c.fetcher} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8,
+            background: "rgba(58,107,138,0.10)", color: "var(--agent-trigger)" }}>
+            🕸 web
+          </span>
+        )}
+        {c.akshare_func && (
+          <span title={c.akshare_func} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8,
+            background: "rgba(91,138,58,0.10)", color: "var(--success)" }}>
+            ⚡ akshare
+          </span>
+        )}
         <span style={{ flex: 1 }} />
         <button className="btn-secondary" disabled={busy} onClick={onRunNow}
           style={{ fontSize: 11, padding: "4px 10px" }}>

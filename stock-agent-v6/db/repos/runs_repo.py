@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.models import Run
+from db.time_utils import now_local
 
 
 def create_run(sess: Session, user_id: str, trigger_key: Optional[str] = None,
@@ -16,7 +17,7 @@ def create_run(sess: Session, user_id: str, trigger_key: Optional[str] = None,
         user_id=user_id,
         trigger_key=trigger_key,
         status="running",
-        started_at=datetime.utcnow(),
+        started_at=now_local(),
         langsmith_project=os.getenv("LANGSMITH_PROJECT"),
         metadata_json=json.dumps(metadata, ensure_ascii=False) if metadata else None,
     )
@@ -31,7 +32,7 @@ def mark_finished(sess: Session, run_id: int) -> None:
     run = sess.scalar(select(Run).where(Run.id == run_id))
     if run:
         run.status = "completed"
-        run.finished_at = datetime.utcnow()
+        run.finished_at = now_local()
         sess.commit()
 
 
@@ -39,7 +40,7 @@ def mark_failed(sess: Session, run_id: int, error: str) -> None:
     run = sess.scalar(select(Run).where(Run.id == run_id))
     if run:
         run.status = "failed"
-        run.finished_at = datetime.utcnow()
+        run.finished_at = now_local()
         run.error = error[:2000]
         sess.commit()
 

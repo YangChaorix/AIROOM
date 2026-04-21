@@ -23,7 +23,19 @@
       "Bash(python -m alembic heads)",
       "Bash(python3 -m alembic heads)",
       "Bash(.venv/bin/alembic current *)",
-      "Bash(kill 55321)"
+      "Bash(kill 55321)",
+      "Bash(nohup .venv/bin/uvicorn api.main:app --reload --port 8000)",
+      "Bash(disown)",
+      "Bash(echo \"api started pid=$!\")",
+      "Bash(nohup npm *)",
+      "Bash(echo \"frontend started pid=$!\")",
+      "Bash(curl -sf http://localhost:8000/api/info)",
+      "Bash(python -c ' *)",
+      "Bash(python3 scheduler/run.py --once stock_info_global_ths)",
+      "Bash(python3 *)",
+      "Bash(curl -s http://localhost:8000/api/triggers?status=skipped_duplicate)",
+      "Bash(curl -s http://localhost:8000/api/queue)",
+      "Bash(curl -s \"http://localhost:8000/api/triggers?status=skipped_duplicate&limit=10\")"
     ]
   }
 }

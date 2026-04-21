@@ -3,7 +3,7 @@
 提供 pending 队列的原子取单、标记处理、标记完成/失败功能。
 """
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, select
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from db.engine import get_session
 from db.models import Trigger
+from db.time_utils import now_local
 
 
 def _trigger_to_dict(row: Trigger) -> Dict[str, Any]:
@@ -35,22 +36,90 @@ def _trigger_to_dict(row: Trigger) -> Dict[str, Any]:
 
 
 def claim_next_pending(sess: Session) -> Optional[Dict[str, Any]]:
-    """原子地取一个 pending trigger 并标记为 processing；取不到返回 None。
+    """取下一条 pending trigger（按 priority DESC + created_at ASC）。
 
-    按 priority DESC + created_at ASC（越老越优先）。
+    **消费层同主题去重**：若候选的 (industry, type) 在当天 Shanghai 日历日内已有
+    `completed` 的同模式 (mode='agent_generated') twin，则把候选标记为
+    `skipped_duplicate`、挂靠到 twin 的 run，合并 source_news_ids 到 twin，
+    循环找下一条。直到找到"无 twin"的 pending 或队列清空。
+
+    **不参与主题去重的 mode**：
+    - `individual_stock`（个股分析入口）—— 每次都要跑
+    - `fixture` / `live`（调试用）—— 主题概念不适用
+    只有 `agent_generated` 模式执行 twin 检查。
     """
-    row = sess.scalar(
-        select(Trigger)
-        .where(Trigger.status == "pending")
-        .order_by(Trigger.priority.desc(), Trigger.created_at.asc())
-        .limit(1)
-        .with_for_update()   # SQLite 忽略但兼容 PG
-    )
-    if row is None:
-        return None
-    row.status = "processing"
+    today_start = datetime.combine(now_local().date(), datetime.min.time())
+    today_end = today_start + timedelta(days=1)
+
+    while True:
+        row = sess.scalar(
+            select(Trigger)
+            .where(Trigger.status == "pending")
+            .order_by(Trigger.priority.desc(), Trigger.created_at.asc())
+            .limit(1)
+            .with_for_update()   # SQLite 忽略但兼容 PG
+        )
+        if row is None:
+            return None
+
+        # 只对 agent_generated 做主题去重；其它模式直通
+        if row.mode != "agent_generated":
+            row.status = "processing"
+            sess.commit()
+            return _trigger_to_dict(row)
+
+        twin = sess.scalars(
+            select(Trigger)
+            .where(
+                Trigger.id != row.id,
+                Trigger.industry == row.industry,
+                Trigger.type == row.type,
+                Trigger.mode == "agent_generated",
+                Trigger.status == "completed",
+                Trigger.consumed_by_run_id.is_not(None),
+                Trigger.created_at >= today_start,
+                Trigger.created_at < today_end,
+            )
+            .order_by(Trigger.created_at.desc())
+            .limit(1)
+        ).first()
+
+        if twin is None:
+            row.status = "processing"
+            sess.commit()
+            return _trigger_to_dict(row)
+
+        # 命中同主题 twin：合并 + 跳过
+        _absorb_into_twin(sess, row, twin)
+        # 继续循环找下一条
+
+
+def _absorb_into_twin(sess: Session, src: Trigger, twin: Trigger) -> None:
+    """把 src 的 source_news_ids 并入 twin，src 标为 skipped_duplicate 挂靠到 twin 的 run。
+
+    news_items.consumed_by_trigger_id 不改动（保留"src 是原始入库者"的事实），
+    但 twin.source_news_ids 会扩展为全集，供 v_recommendation_trace 完整反查。
+    """
+    try:
+        src_ids = json.loads(src.source_news_ids) if src.source_news_ids else []
+    except json.JSONDecodeError:
+        src_ids = []
+    try:
+        twin_ids = json.loads(twin.source_news_ids) if twin.source_news_ids else []
+    except json.JSONDecodeError:
+        twin_ids = []
+    merged = list(dict.fromkeys([*twin_ids, *src_ids]))
+
+    now = now_local()
+    twin.source_news_ids = json.dumps(merged, ensure_ascii=False)
+    twin.duplicate_count = (twin.duplicate_count or 1) + 1
+    twin.last_seen_at = now
+
+    src.status = "skipped_duplicate"
+    src.consumed_by_run_id = twin.consumed_by_run_id
+    src.processed_at = now
+
     sess.commit()
-    return _trigger_to_dict(row)
 
 
 def mark_completed(sess: Session, trigger_db_id: int, run_id: int) -> None:
@@ -59,7 +128,7 @@ def mark_completed(sess: Session, trigger_db_id: int, run_id: int) -> None:
         return
     row.status = "completed"
     row.consumed_by_run_id = run_id
-    row.processed_at = datetime.utcnow()
+    row.processed_at = now_local()
     sess.commit()
 
 
@@ -68,7 +137,7 @@ def mark_failed(sess: Session, trigger_db_id: int, error: str) -> None:
     if row is None:
         return
     row.status = "failed"
-    row.processed_at = datetime.utcnow()
+    row.processed_at = now_local()
     # 把 error 写到 metadata_json 里（不新增列）
     try:
         meta = json.loads(row.metadata_json) if row.metadata_json else {}

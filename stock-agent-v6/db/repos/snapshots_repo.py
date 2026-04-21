@@ -10,10 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.models import FinancialSnapshot, HolderSnapshot, TechnicalSnapshot
+from db.time_utils import now_local
 
 
 def _today() -> date:
-    return datetime.utcnow().date()
+    return now_local().date()
 
 
 # ── financial ──

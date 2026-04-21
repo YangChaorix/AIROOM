@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_db
 from db.models import AgentOutput
+from db.time_utils import now_local
 
 router = APIRouter(prefix="/api", tags=["agents"])
 
@@ -20,7 +21,7 @@ def agents_status(db: Session = Depends(get_db)):
 
     前端据此决定头像脉冲 / 灰度状态。
     """
-    cutoff = datetime.utcnow() - timedelta(minutes=5)
+    cutoff = now_local() - timedelta(minutes=5)
     result: List[Dict[str, Any]] = []
     for name in _AGENT_NAMES:
         latest = db.scalar(

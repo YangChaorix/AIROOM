@@ -61,15 +61,115 @@
       "cron": {"hour": 9, "minute": 30},
       "source_label": "东财-券商研报",
       "adapter": "research_report"
+    },
+
+    {
+      "name": "stock_info_global_cls",
+      "description": "财联社快讯：A 股最主流实时快讯，覆盖政策/个股/行业重大事件",
+      "enabled": true,
+      "akshare_func": "stock_info_global_cls",
+      "cron": {"hour": "6-22", "minute": "0,30"},
+      "source_label": "财联社",
+      "adapter": "cls_flash"
+    },
+    {
+      "name": "stock_info_global_ths",
+      "description": "同花顺快讯：与财联社互补的金融快讯源",
+      "enabled": true,
+      "akshare_func": "stock_info_global_ths",
+      "cron": {"hour": "6-22", "minute": "15,45"},
+      "source_label": "同花顺"
+    },
+    {
+      "name": "stock_info_global_sina",
+      "description": "新浪财经全球快讯：侧重宏观/国际市场联动",
+      "enabled": true,
+      "akshare_func": "stock_info_global_sina",
+      "cron": {"hour": "7-21", "minute": 20},
+      "source_label": "新浪财经",
+      "adapter": "sina_flash"
+    },
+    {
+      "name": "stock_news_main_cx",
+      "description": "财新财经：政策类深度内容，质量高但更新较慢",
+      "enabled": true,
+      "akshare_func": "stock_news_main_cx",
+      "cron": {"hour": "8,14,20", "minute": 40},
+      "source_label": "财新",
+      "adapter": "caixin"
+    },
+    {
+      "name": "futures_news_shmet",
+      "description": "上海金属网：铜/铝/镍/锂/锌/铅有色金属行业实时资讯",
+      "enabled": true,
+      "fetcher": "tools.news_sources:get_shmet_metal_news",
+      "fetcher_kwargs": {"hours": 24},
+      "cron": {"hour": "8,12,16,20", "minute": 25},
+      "source_label": "上海金属网"
+    },
+    {
+      "name": "gov_ndrc",
+      "description": "国家发改委：产业政策/专项规划/价格机制（web 爬取）",
+      "enabled": true,
+      "fetcher": "tools.news_sources:get_ndrc_news",
+      "fetcher_kwargs": {"max_articles": 8},
+      "cron": {"hour": "9,16", "minute": 0},
+      "source_label": "国家发改委"
+    },
+    {
+      "name": "gov_miit",
+      "description": "工信部：化工/电子/制造/通信工业政策（web 爬取）",
+      "enabled": true,
+      "fetcher": "tools.news_sources:get_miit_news",
+      "fetcher_kwargs": {"max_articles": 8},
+      "cron": {"hour": "9,17", "minute": 10},
+      "source_label": "工信部"
+    },
+    {
+      "name": "gov_nea",
+      "description": "国家能源局：石油/天然气/煤炭/电力/新能源政策（web 爬取）",
+      "enabled": true,
+      "fetcher": "tools.news_sources:get_nea_news",
+      "fetcher_kwargs": {"max_articles": 8},
+      "cron": {"hour": "9,17", "minute": 20},
+      "source_label": "国家能源局"
+    },
+    {
+      "name": "gov_mee",
+      "description": "生态环境部：环保/化工排放/双碳目标政策（web 爬取）",
+      "enabled": true,
+      "fetcher": "tools.news_sources:get_mee_news",
+      "fetcher_kwargs": {"max_articles": 8},
+      "cron": {"hour": "9,17", "minute": 30},
+      "source_label": "生态环境部"
+    },
+    {
+      "name": "gov_nhsa",
+      "description": "国家医保局：医保目录/集采/DRG-DIP 支付改革（web 爬取）",
+      "enabled": true,
+      "fetcher": "tools.news_sources:get_nhsa_news",
+      "fetcher_kwargs": {"max_articles": 8},
+      "cron": {"hour": "9,17", "minute": 40},
+      "source_label": "国家医保局"
     }
   ],
 
   "_how_to_add_channel": [
-    "1. 确认 AkShare 里有对应函数（ak.xxx()）",
-    "2. 在 channels 数组加一条：name（唯一）、akshare_func、cron、source_label",
-    "3. 如果接口返回的列名与通用模板（标题/摘要）不同，加 adapter 字段：",
-    "   - generic（默认）/ economic_event / suspend_notice / research_report",
-    "   - 新列名模式请在 scheduler/tasks.py::_df_to_items 里加新 adapter 分支",
-    "4. enabled=true，重启 scheduler 进程"
+    "两种渠道类型二选一：",
+    "",
+    "(A) AkShare 模式 —— AkShare 返回 DataFrame：",
+    "  1. 确认 ak.xxx() 存在",
+    "  2. 加一条：name / akshare_func / cron / source_label",
+    "  3. 列名与通用模板不同时加 adapter 字段（见下列）",
+    "",
+    "(B) 自定义 fetcher 模式 —— 适合非 akshare 源（web 爬虫、第三方 SDK）：",
+    "  1. 写 Python 函数返回 List[{title, content, source, published_at}]",
+    "  2. 加一条：name / fetcher='pkg.mod:func' / fetcher_kwargs / cron / source_label",
+    "",
+    "adapter 可选：generic（默认，标题/摘要/发布时间）/ economic_event / suspend_notice /",
+    "research_report / cls_flash（发布日期+发布时间）/ sina_flash（只有内容字段）/ caixin（summary 字段）",
+    "新列名模式请在 scheduler/tasks.py::_df_to_items 里加分支。",
+    "",
+    "enabled=true，重启 scheduler 进程生效。"
   ]
 }

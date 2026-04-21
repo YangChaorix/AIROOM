@@ -17,6 +17,7 @@ const TYPE_LABEL = {
 export default function QueueTab({ onToast }) {
   const [data, setData] = useState(null);
   const [completed, setCompleted] = useState([]);
+  const [skipped, setSkipped] = useState([]);
   const [consuming, setConsuming] = useState(false);
   const [triggering, setTriggering] = useState(false);
   const [date, setDate] = useState(toDateKey(new Date()));
@@ -38,6 +39,7 @@ export default function QueueTab({ onToast }) {
   async function refresh() {
     try { setData(await api.getQueue()); } catch {}
     try { setCompleted(await api.listTriggers("completed", 50, date)); } catch {}
+    try { setSkipped(await api.listTriggers("skipped_duplicate", 50, date)); } catch {}
   }
   useEffect(() => {
     refresh();
@@ -67,6 +69,7 @@ export default function QueueTab({ onToast }) {
             <span style={{ fontSize: 12, color: "var(--agent-trigger)" }}>🔴 Pending {data.counts.pending || 0}</span>
             <span style={{ fontSize: 12, color: "var(--warning)" }}>🟡 Processing {data.counts.processing || 0}</span>
             <span style={{ fontSize: 12, color: "var(--success)" }}>✓ Completed {data.counts.completed || 0}</span>
+            {(data.counts.skipped_duplicate || 0) > 0 && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>⎘ Skipped {data.counts.skipped_duplicate}</span>}
             {(data.counts.failed || 0) > 0 && <span style={{ fontSize: 12, color: "var(--error)" }}>✗ Failed {data.counts.failed}</span>}
             <button className="btn" onClick={handleRunTrigger} disabled={triggering}
               style={{ fontSize: 12, padding: "5px 12px", marginLeft: 8 }}>
@@ -112,6 +115,16 @@ export default function QueueTab({ onToast }) {
           completed.map((t) => <TriggerCard key={t.id} t={t} variant="completed" />)
         )}
       </Section>
+
+      {/* Skipped Duplicate — 消费时发现同主题 twin 被合并的 */}
+      {skipped.length > 0 && (
+        <Section
+          title={`⎘ 跳过（主题重复）· ${skipped.length}`}
+          color="var(--text-muted)"
+        >
+          {skipped.map((t) => <TriggerCard key={t.id} t={t} variant="skipped" />)}
+        </Section>
+      )}
     </div>
   );
 }
@@ -182,7 +195,8 @@ function TriggerCard({ t, variant }) {
   }
   const color = variant === "processing" ? "var(--warning)" :
     variant === "pending" ? "var(--agent-trigger)" :
-    variant === "failed" ? "var(--error)" : "var(--success)";
+    variant === "failed" ? "var(--error)" :
+    variant === "skipped" ? "var(--text-muted)" : "var(--success)";
 
   const style = {
     padding: isHighPri ? 14 : 10,
@@ -192,6 +206,7 @@ function TriggerCard({ t, variant }) {
     background: "var(--card)",
     boxShadow: isHighPri ? "0 2px 8px rgba(176,125,42,0.10)" : "none",
     animation: variant === "pending" ? "floatSoft 3s ease-in-out infinite" : "none",
+    opacity: variant === "skipped" ? 0.75 : 1,
   };
 
   const theme = t.theme_stats;
@@ -206,8 +221,8 @@ function TriggerCard({ t, variant }) {
             🔥 priority {t.priority}
           </span>
         )}
-        <span className={`badge badge-${variant === "processing" ? "processing" : variant === "pending" ? "pending" : variant === "failed" ? "failed" : "completed"}`}>
-          {variant}
+        <span className={`badge badge-${variant === "processing" ? "processing" : variant === "pending" ? "pending" : variant === "failed" ? "failed" : variant === "skipped" ? "completed" : "completed"}`}>
+          {variant === "skipped" ? "⎘ skipped" : variant}
         </span>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {TYPE_LABEL[t.type] || t.type} · {t.strength}
@@ -276,7 +291,8 @@ function TriggerCard({ t, variant }) {
       )}
       {t.consumed_by_run_id && (
         <div style={{ marginTop: 6, fontSize: 12 }}>
-          → <Link to={`/runs/${t.consumed_by_run_id}`}>查看 run #{t.consumed_by_run_id}</Link>
+          {variant === "skipped" ? "⎘ 被吸收至 " : "→ "}
+          <Link to={`/runs/${t.consumed_by_run_id}`}>run #{t.consumed_by_run_id}</Link>
         </div>
       )}
     </div>

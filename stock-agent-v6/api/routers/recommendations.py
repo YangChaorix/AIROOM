@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_db
 from db.models import AgentOutput, ConditionScore, Run, SkepticFinding, StockRecommendation, Trigger
+from db.time_utils import now_local
 
 router = APIRouter(prefix="/api", tags=["recommendations"])
 
@@ -25,7 +26,7 @@ def list_recommendations(
     - 按 run.started_at 倒序（最新在前）
     - 每只股票附带 `supporting_triggers`：同一日期范围内**其他 trigger** 也推荐了该股的清单（用于前端展示"多 trigger 共振"）
     """
-    since = datetime.utcnow() - timedelta(days=days)
+    since = now_local() - timedelta(days=days)
 
     runs = db.scalars(
         select(Run)

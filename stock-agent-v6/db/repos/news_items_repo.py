@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.models import NewsItem
+from db.time_utils import now_local
 
 
 def _content_hash(title: str, source: str) -> str:
@@ -58,7 +59,7 @@ def bulk_upsert(sess: Session, items: List[Dict[str, Any]]) -> Dict[str, Any]:
             title=title,
             content=(it.get("content") or "")[:500] or None,
             source=source,
-            published_at=pub or datetime.utcnow(),
+            published_at=pub or now_local(),
         )
         sess.add(row)
         sess.flush()

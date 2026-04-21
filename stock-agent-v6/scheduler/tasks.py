@@ -1,10 +1,13 @@
 """新闻抓取任务定义。
 
-每个任务函数接受一个渠道配置 dict，调 AkShare 拉数据 → upsert 到 news_items 表 → 失败入 system_logs。
-所有函数共用同一模板，是"AkShare 接口名驱动"，支持任何返回 DataFrame 的 AkShare 新闻函数。
+每个任务函数接受一个渠道配置 dict，拉数据 → upsert 到 news_items 表 → 失败入 system_logs。
+支持两种数据源：
+- `akshare_func`：AkShare 返回 DataFrame（主流金融新闻）
+- `fetcher`：自定义 Python 函数路径 "pkg.module:func_name"，直接返回 List[Dict]（政务网站爬虫等）
 """
+import importlib
 import time
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 import akshare as ak
 
@@ -42,7 +45,25 @@ def _df_to_items(df, source_label: str, adapter: str = "generic") -> List[Dict[s
         return ""
 
     for _, row in df.iterrows():
-        if adapter == "economic_event":
+        if adapter == "cls_flash":
+            # 财联社快讯：发布日期 + 发布时间 拼成 published_at
+            date = pick(row, "发布日期")
+            time_ = pick(row, "发布时间")
+            title = pick(row, "标题")
+            content = pick(row, "内容")
+            published_at = f"{date} {time_}".strip()
+        elif adapter == "sina_flash":
+            # 新浪只有内容字段，取前 80 字做标题
+            content = pick(row, "内容")
+            title = content[:80] if content else ""
+            published_at = pick(row, "时间")
+        elif adapter == "caixin":
+            # 财新：summary 字段做标题和内容
+            summary = pick(row, "summary")
+            title = summary[:80] if summary else ""
+            content = summary
+            published_at = pick(row, "pub_time", "interval_time")
+        elif adapter == "economic_event":
             date = pick(row, "日期")
             time_ = pick(row, "时间")
             area = pick(row, "地区")
@@ -85,30 +106,72 @@ def _df_to_items(df, source_label: str, adapter: str = "generic") -> List[Dict[s
     return items
 
 
+def _resolve_fetcher(dotted: str) -> Optional[Callable[..., List[Dict[str, Any]]]]:
+    """解析 "pkg.module:func_name" → Python callable。"""
+    try:
+        module_path, func_name = dotted.split(":", 1)
+        mod = importlib.import_module(module_path)
+        func = getattr(mod, func_name, None)
+        return func if callable(func) else None
+    except Exception:
+        return None
+
+
 def fetch_channel(channel: Dict[str, Any]) -> Dict[str, Any]:
     """执行单个渠道的抓取任务。
+
+    渠道支持两种 mode（二选一）：
+    - `akshare_func`: AkShare 函数名，走 DataFrame → _df_to_items 解析
+    - `fetcher`: "pkg.module:func" 格式，调用后直接返回 List[Dict]
 
     返回 {"inserted": N, "seen": M, "error": None/str}。
     失败时写 system_logs（error 级），不 raise。
     """
     name = channel["name"]
-    func_name = channel["akshare_func"]
     source_label = channel.get("source_label", name)
     source_tag = f"scheduler.{name}"
+    fetcher_path = channel.get("fetcher")
+    func_name = channel.get("akshare_func")
+    fetcher_kwargs = channel.get("fetcher_kwargs", {})
 
     start = time.time()
     try:
-        func = getattr(ak, func_name, None)
-        if not callable(func):
-            msg = f"AkShare 无此函数: {func_name}"
+        items: List[Dict[str, Any]]
+        backend: str
+
+        if fetcher_path:
+            fetcher = _resolve_fetcher(fetcher_path)
+            if not fetcher:
+                msg = f"fetcher 不可解析: {fetcher_path}"
+                log("error", source_tag, msg, context={"channel": channel})
+                return {"inserted": 0, "seen": 0, "error": msg}
+            raw = fetcher(**fetcher_kwargs) if fetcher_kwargs else fetcher()
+            # 统一 source 字段 → source_label（允许 fetcher 返回时已填 source）
+            items = []
+            for it in (raw or []):
+                it = dict(it)
+                it.setdefault("source", source_label)
+                items.append(it)
+            backend = f"fetcher:{fetcher_path}"
+
+        elif func_name:
+            func = getattr(ak, func_name, None)
+            if not callable(func):
+                msg = f"AkShare 无此函数: {func_name}"
+                log("error", source_tag, msg, context={"channel": channel})
+                return {"inserted": 0, "seen": 0, "error": msg}
+            df = func()
+            adapter = channel.get("adapter", "generic")
+            items = _df_to_items(df, source_label, adapter=adapter)
+            backend = f"akshare:{func_name}"
+
+        else:
+            msg = "渠道配置缺少 akshare_func 或 fetcher"
             log("error", source_tag, msg, context={"channel": channel})
             return {"inserted": 0, "seen": 0, "error": msg}
 
-        df = func()
-        adapter = channel.get("adapter", "generic")
-        items = _df_to_items(df, source_label, adapter=adapter)
         if not items:
-            log("warning", source_tag, f"渠道 {name} 返回空", context={"func": func_name})
+            log("warning", source_tag, f"渠道 {name} 返回空", context={"backend": backend})
             return {"inserted": 0, "seen": 0, "error": None}
 
         with get_session() as sess:
@@ -119,7 +182,7 @@ def fetch_channel(channel: Dict[str, Any]) -> Dict[str, Any]:
         elapsed_ms = int((time.time() - start) * 1000)
         log("info", source_tag,
             f"渠道 {name} 抓取完成：{len(items)} 条候选 → 新增 {inserted}，去重命中 {dedup}",
-            context={"elapsed_ms": elapsed_ms, "func": func_name,
+            context={"elapsed_ms": elapsed_ms, "backend": backend,
                      "inserted": inserted, "dedup_hit": dedup})
         return {"inserted": inserted, "dedup_hit": dedup, "seen": len(items), "error": None}
 

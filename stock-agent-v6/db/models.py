@@ -23,13 +23,19 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from db.time_utils import now_local as _now_local
+
 
 class Base(DeclarativeBase):
     pass
 
 
 def _now_utc() -> datetime:
-    return datetime.utcnow()
+    """历史命名保留，实际返回 APP_TIMEZONE 本地时间（naive）。
+
+    SQLite DateTime 列不带 tzinfo，全仓库约定：字段值 = APP_TIMEZONE 本地时间。
+    """
+    return _now_local()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -142,7 +148,9 @@ class Trigger(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_now_utc)
     # ── Phase 6 新增：事件队列字段 ──
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
-    # status: pending / processing / completed / failed / skipped
+    # status: pending / processing / completed / failed / skipped_duplicate
+    # skipped_duplicate：消费时发现当天已有同 (industry, type) 的 completed twin，
+    # 本条被并入 twin（consumed_by_run_id 指向 twin 的 run），不再独立跑 pipeline
     consumed_by_run_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("runs.id"))
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     # priority 1-10，Trigger Agent 打分后写入；main.py 消费时按 priority DESC + created_at ASC

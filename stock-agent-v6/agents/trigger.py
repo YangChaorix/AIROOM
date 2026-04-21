@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from agents.llm_factory import build_llm
 from db.engine import get_session
+from db.time_utils import now_local
 from db.models import AgentOutput, NewsItem, Trigger
 from db.repos import agent_outputs_repo, users_repo
 from db.repos.system_logs_repo import log, log_exception
@@ -68,7 +69,7 @@ def _fetch_pending_news(sess: Session, hours: int = 24, per_source_limit: int = 
     再合并按 created_at DESC 排，取全局前 global_limit。
     避免同批入库的大渠道（如 223 条券商研报）挤占候选池。
     """
-    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    cutoff = now_local() - timedelta(hours=hours)
 
     # 先列出所有活跃 source
     sources_stmt = (
@@ -99,7 +100,7 @@ def _fetch_pending_news(sess: Session, hours: int = 24, per_source_limit: int = 
 
 
 def _build_prompt(news_items: List[NewsItem], user_conditions: List[Dict[str, Any]]) -> str:
-    now = datetime.utcnow()
+    now = now_local()
     news_list = [
         {
             "id": n.id,
@@ -239,7 +240,7 @@ def _persist_one_trigger(
     source_tag: str,
 ) -> Dict[str, Any]:
     """把单条 trigger 落库（方案 C 去重 → 命中则累加，否则新建）。"""
-    trigger_id_str = trigger_dict.get("trigger_id") or f"T-AGENT-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+    trigger_id_str = trigger_dict.get("trigger_id") or f"T-AGENT-{now_local().strftime('%Y%m%d%H%M%S%f')}"
     headline = str(trigger_dict.get("headline", "自动生成触发"))[:200]
     priority = int(trigger_dict.get("priority", 5))
     strength = str(trigger_dict.get("strength", "medium"))
@@ -256,7 +257,7 @@ def _persist_one_trigger(
             if result is not None:
                 return result
 
-        now = datetime.utcnow()
+        now = now_local()
         row = Trigger(
             trigger_id=trigger_id_str,
             run_id=None,
@@ -320,7 +321,7 @@ def _find_dedup_match(sess: Session, industry: str, trigger_type: str) -> Option
 
     找到则返回最新的一条；都未找到返回 None。
     """
-    today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
+    today_start = datetime.combine(now_local().date(), datetime.min.time())
     today_end = today_start + timedelta(days=1)
 
     # Step 1：今日任何状态
@@ -367,7 +368,7 @@ def _reinforce_existing(
     不改 status（已 completed 的不退回 pending；pending 的保持 pending）。
     返回 dict 表示已处理完；返回 None 表示全部 news 已被并发消费，让上层 fallback。
     """
-    now = datetime.utcnow()
+    now = now_local()
 
     # 把 news 绑定到 existing trigger（乐观锁）
     affected = sess.query(NewsItem).filter(
