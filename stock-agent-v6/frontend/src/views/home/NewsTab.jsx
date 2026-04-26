@@ -39,12 +39,15 @@ export default function NewsTab({ onToast }) {
   }
 
   useEffect(() => {
-    api.newsStats().then(setStats).catch(() => {});
-  }, []);
+    api.newsStats(date).then(setStats).catch(() => {});
+  }, [date]);
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 8000);
+    const t = setInterval(() => {
+      refresh();
+      api.newsStats(date).then(setStats).catch(() => {});
+    }, 8000);
     return () => clearInterval(t);
     // eslint-disable-next-line
   }, [consumedFilter, source, date]);

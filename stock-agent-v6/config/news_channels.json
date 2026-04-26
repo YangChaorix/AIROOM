@@ -6,7 +6,7 @@
     {
       "name": "news_cctv",
       "description": "央视网时政新闻：日更 1-2 条重大时政，更新慢",
-      "enabled": true,
+      "enabled": false,
       "akshare_func": "news_cctv",
       "cron": {"hour": 8, "minute": 0},
       "source_label": "央视网"
@@ -17,7 +17,7 @@
       "enabled": true,
       "akshare_func": "stock_info_cjzc_em",
       "cron": {"hour": 7, "minute": 0},
-      "source_label": "东财-财经早餐"
+      "source_label": "东方财富"
     },
     {
       "name": "stock_info_global_em",
@@ -25,7 +25,7 @@
       "enabled": true,
       "akshare_func": "stock_info_global_em",
       "cron": {"hour": "9-16", "minute": 5},
-      "source_label": "东财-全球资讯"
+      "source_label": "东方财富"
     },
     {
       "name": "stock_info_global_em_offhour",
@@ -33,12 +33,12 @@
       "enabled": true,
       "akshare_func": "stock_info_global_em",
       "cron": {"hour": "0,3,6,17,20,23", "minute": 10},
-      "source_label": "东财-全球资讯"
+      "source_label": "东方财富"
     },
     {
       "name": "news_economic_baidu",
       "description": "百度经济事件日历：美国/中国/欧洲的经济数据发布（非传统新闻，但影响市场）",
-      "enabled": true,
+      "enabled": false,
       "akshare_func": "news_economic_baidu",
       "cron": {"hour": 8, "minute": 15},
       "source_label": "百度-经济日历",
@@ -47,7 +47,7 @@
     {
       "name": "news_trade_notify_suspend_baidu",
       "description": "百度停牌/复牌公告：风险预警（C6 转折事件来源）",
-      "enabled": true,
+      "enabled": false,
       "akshare_func": "news_trade_notify_suspend_baidu",
       "cron": {"hour": "9,12,15", "minute": 0},
       "source_label": "百度-停牌公告",
@@ -59,7 +59,7 @@
       "enabled": true,
       "akshare_func": "stock_research_report_em",
       "cron": {"hour": 9, "minute": 30},
-      "source_label": "东财-券商研报",
+      "source_label": "东方财富",
       "adapter": "research_report"
     },
 
@@ -92,7 +92,7 @@
     {
       "name": "stock_news_main_cx",
       "description": "财新财经：政策类深度内容，质量高但更新较慢",
-      "enabled": true,
+      "enabled": false,
       "akshare_func": "stock_news_main_cx",
       "cron": {"hour": "8,14,20", "minute": 40},
       "source_label": "财新",
@@ -128,7 +128,7 @@
     {
       "name": "gov_nea",
       "description": "国家能源局：石油/天然气/煤炭/电力/新能源政策（web 爬取）",
-      "enabled": true,
+      "enabled": false,
       "fetcher": "tools.news_sources:get_nea_news",
       "fetcher_kwargs": {"max_articles": 8},
       "cron": {"hour": "9,17", "minute": 20},
@@ -137,7 +137,7 @@
     {
       "name": "gov_mee",
       "description": "生态环境部：环保/化工排放/双碳目标政策（web 爬取）",
-      "enabled": true,
+      "enabled": false,
       "fetcher": "tools.news_sources:get_mee_news",
       "fetcher_kwargs": {"max_articles": 8},
       "cron": {"hour": "9,17", "minute": 30},
@@ -146,7 +146,7 @@
     {
       "name": "gov_nhsa",
       "description": "国家医保局：医保目录/集采/DRG-DIP 支付改革（web 爬取）",
-      "enabled": true,
+      "enabled": false,
       "fetcher": "tools.news_sources:get_nhsa_news",
       "fetcher_kwargs": {"max_articles": 8},
       "cron": {"hour": "9,17", "minute": 40},

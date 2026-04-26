@@ -101,11 +101,33 @@ def list_recommendations(
                 "strength": t.strength,
             })
 
+    # === Phase A：同一日内每只股票只在"最高分 run"里出现一次 ===
+    # 跨 run 的重复推荐已由 supporting_triggers 在股卡上打"共荐"徽章；
+    # 这里只保留每个 (day, code) 组合里 total_score 最高的那条 rec，其余移除。
+    run_day_by_id: Dict[int, str] = {
+        r.id: (r.started_at.strftime("%Y-%m-%d") if r.started_at else "") for r in runs
+    }
+    best_per_day_code: Dict[tuple, tuple[int, float]] = {}  # (day, code) -> (rec_id, score)
+    for run in runs:
+        day = run_day_by_id.get(run.id, "")
+        for r in recs_by_run.get(run.id, []):
+            key = (day, r.code)
+            score = r.total_score or 0.0
+            cur = best_per_day_code.get(key)
+            if cur is None or score > cur[1]:
+                best_per_day_code[key] = (r.id, score)
+
+    primary_rec_ids = {v[0] for v in best_per_day_code.values()}
+
     groups: List[Dict[str, Any]] = []
 
     for run in runs:
         trigger = run_to_trigger.get(run.id)
-        recs = sorted(recs_by_run.get(run.id, []), key=lambda x: (x.rank or 999))
+        # 只保留"当天此股 total_score 最高"的 rec
+        recs = sorted(
+            [r for r in recs_by_run.get(run.id, []) if r.id in primary_rec_ids],
+            key=lambda x: (x.rank or 999),
+        )
         if not recs:
             continue
 

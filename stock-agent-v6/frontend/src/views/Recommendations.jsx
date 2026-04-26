@@ -136,7 +136,7 @@ function TriggerGroup({ g, onShowTimeline }) {
       {/* 推荐股票卡片 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "var(--gap-sm)" }}>
         {g.stocks.map((s) => (
-          <StockCard key={s.id} s={s} />
+          <StockCard key={s.id} s={s} ownTriggerHeadline={t.headline} />
         ))}
       </div>
 
@@ -145,14 +145,12 @@ function TriggerGroup({ g, onShowTimeline }) {
   );
 }
 
-function StockCard({ s }) {
+function StockCard({ s, ownTriggerHeadline }) {
   const [expanded, setExpanded] = useState(false);
+  const [resonanceOpen, setResonanceOpen] = useState(false);
   const color = s.level === "recommend" ? "var(--success)" : "var(--warning)";
   const resonanceCount = (s.supporting_triggers?.length || 0) + 1;
   const hasResonance = resonanceCount >= 2;
-  const resonanceTitle = hasResonance
-    ? "共振 trigger：\n" + s.supporting_triggers.map((t) => `· ${t.headline}（${t.industry || ""}·${t.type}）`).join("\n")
-    : "";
 
   return (
     <div style={{
@@ -171,13 +169,68 @@ function StockCard({ s }) {
         <span style={{ fontFamily: "DM Mono", fontSize: 12, color: "var(--text-muted)" }}>{s.code}</span>
         <span className={`badge badge-${s.level}`}>{s.level === "recommend" ? "推荐" : "观察"}</span>
         {hasResonance && (
-          <span title={resonanceTitle}
-            style={{
-              fontSize: 10, padding: "2px 7px", borderRadius: 10, fontWeight: 600,
-              background: "rgba(176,125,42,0.14)", color: "var(--primary)",
-              border: "1px solid rgba(176,125,42,0.3)", cursor: "help",
-            }}>
-            ✨ {resonanceCount} 条 trigger 共荐
+          <span style={{ position: "relative", display: "inline-block" }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setResonanceOpen((v) => !v); }}
+              style={{
+                fontSize: 10, padding: "2px 7px", borderRadius: 10, fontWeight: 600,
+                background: resonanceOpen ? "rgba(176,125,42,0.24)" : "rgba(176,125,42,0.14)",
+                color: "var(--primary)",
+                border: "1px solid rgba(176,125,42,0.3)", cursor: "pointer",
+              }}>
+              ✨ {resonanceCount} 条 trigger 共荐 {resonanceOpen ? "▴" : "▾"}
+            </button>
+            {resonanceOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 10,
+                  minWidth: 320, maxWidth: 420,
+                  background: "var(--card)", border: "1px solid var(--border)",
+                  borderRadius: 8, padding: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                  display: "flex", flexDirection: "column", gap: 6,
+                }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>
+                  含本条共 {resonanceCount} 条 trigger 推荐该股
+                </div>
+                {/* 当前 trigger（用 trigger_ref 显示，区别于 supporting） */}
+                <div style={{
+                  fontSize: 11, lineHeight: 1.5,
+                  padding: "6px 8px", borderRadius: 6,
+                  background: "rgba(91,138,58,0.10)",
+                  borderLeft: "3px solid var(--success)",
+                }}>
+                  <span style={{ fontWeight: 600, color: "var(--success)" }}>本 trigger</span>
+                  <div style={{ marginTop: 2 }}>{ownTriggerHeadline || "（当前分组触发）"}</div>
+                </div>
+                {/* 其他支持 trigger */}
+                {s.supporting_triggers?.map((t, i) => (
+                  <div key={i} style={{
+                    fontSize: 11, lineHeight: 1.5,
+                    padding: "6px 8px", borderRadius: 6,
+                    background: "rgba(58,107,138,0.08)",
+                    borderLeft: "3px solid var(--agent-trigger)",
+                  }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8,
+                        background: "rgba(58,107,138,0.15)", color: "var(--agent-trigger)" }}>
+                        {TYPE_LABEL[t.type] || t.type}
+                      </span>
+                      {t.industry && (
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{t.industry}</span>
+                      )}
+                      {t.strength && (
+                        <span style={{ fontSize: 10, fontWeight: 600,
+                          color: STRENGTH_COLOR[t.strength] || "var(--text-muted)" }}>
+                          {t.strength?.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ marginTop: 3 }}>{t.headline}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </span>
         )}
         <span style={{ marginLeft: "auto", fontWeight: 600, color, fontSize: 14 }}>

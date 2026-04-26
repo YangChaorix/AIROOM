@@ -62,12 +62,20 @@ def list_news(
 
 
 @router.get("/news/stats")
-def news_stats(db: Session = Depends(get_db)):
-    """按 source 分组计数（供主页"今日概览"）。"""
+def news_stats(
+    date: Optional[str] = Query(None, description="YYYY-MM-DD，按 created_at 当天过滤；留空则统计全量"),
+    db: Session = Depends(get_db),
+):
+    """按 source 分组计数（供新闻流来源下拉）。可按 date 过滤只看当天分布。"""
+    from datetime import datetime, timedelta
+
     from sqlalchemy import func
-    rows = db.execute(
-        select(NewsItem.source, func.count(NewsItem.id)).group_by(NewsItem.source)
-    ).all()
+    stmt = select(NewsItem.source, func.count(NewsItem.id))
+    if date:
+        day_start = datetime.strptime(date, "%Y-%m-%d")
+        day_end = day_start + timedelta(days=1)
+        stmt = stmt.where(NewsItem.created_at >= day_start, NewsItem.created_at < day_end)
+    rows = db.execute(stmt.group_by(NewsItem.source)).all()
     return {
         "by_source": {r[0]: r[1] for r in rows},
         "total": sum(r[1] for r in rows),

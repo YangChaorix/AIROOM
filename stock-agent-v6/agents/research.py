@@ -5,9 +5,12 @@
 - 用 LangChain AgentExecutor 跑 ReAct 循环（max_iterations=12 兜底）
 - 最终响应解析为 ResearchReport Pydantic
 - 候选股起点提示从 data/industry_leaders_map.json 取（按 trigger.industry 查映射）
+- 避免重复分析：当同 industry 在 RECENT_DEDUP_DAYS 内已有推荐时，
+  候选池过滤掉已推 code 并在 prompt 中明确提示（B 方案）
 """
 import json
 import re
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -24,6 +27,43 @@ from tools.real_research_tools import TOOL_FUNCTIONS
 _PROMPT_PATH = Path(__file__).parent.parent / "config" / "prompts" / "research.md"
 _TOOLS_JSON_PATH = Path(__file__).parent.parent / "config" / "tools" / "research_tools.json"
 _INDUSTRY_MAP_PATH = Path(__file__).parent.parent / "data" / "industry_leaders_map.json"
+
+# 同行业重复分析去重窗口
+RECENT_DEDUP_DAYS = 3
+
+
+def _recent_same_industry_codes(industry: str, exclude_trigger_id: str = "") -> List[str]:
+    """返回 RECENT_DEDUP_DAYS 天内、同行业、其他 trigger 已推荐（recommend/watch）的 code 列表。
+
+    数据库不可达时静默返回空列表（不让 Research 崩）。
+    """
+    if not industry:
+        return []
+    try:
+        from sqlalchemy import select
+        from db.engine import get_session
+        from db.models import AgentOutput, Run, StockRecommendation, Trigger
+        from db.time_utils import now_local
+
+        cutoff = now_local() - timedelta(days=RECENT_DEDUP_DAYS)
+        with get_session() as sess:
+            stmt = (
+                select(StockRecommendation.code)
+                .join(AgentOutput, AgentOutput.id == StockRecommendation.agent_output_id)
+                .join(Run, Run.id == AgentOutput.run_id)
+                .join(Trigger, Trigger.consumed_by_run_id == Run.id)
+                .where(
+                    Run.started_at >= cutoff,
+                    StockRecommendation.recommendation_level.in_(["recommend", "watch"]),
+                    Trigger.industry == industry,
+                )
+            )
+            if exclude_trigger_id:
+                stmt = stmt.where(Trigger.trigger_id != exclude_trigger_id)
+            rows = sess.execute(stmt.distinct()).all()
+            return [r[0] for r in rows if r[0]]
+    except Exception:
+        return []
 
 
 def _load_enabled_tools() -> List[StructuredTool]:
@@ -42,11 +82,12 @@ def _load_enabled_tools() -> List[StructuredTool]:
     return tools
 
 
-def _candidate_hint(trigger: Dict[str, Any], limit: int = 3) -> str:
+def _candidate_hint(trigger: Dict[str, Any], limit: int = 3, exclude_codes: List[str] = None) -> str:
     """给 Research LLM 的候选股起点提示。
 
-    - 事件驱动（focus_codes 为空）：从 industry_leaders_map.json 按行业取龙头
-    - 个股分析（focus_codes 非空，Phase 4）：直接用 focus_codes，不扩大范围
+    - 事件驱动（focus_codes 为空）：从 industry_leaders_map.json 按行业取龙头；
+      若 exclude_codes 非空，优先剔除这些 code；全部被剔除时退回原列表兜底。
+    - 个股分析（focus_codes 非空，Phase 4）：直接用 focus_codes，不做去重过滤。
     """
     focus = trigger.get("focus_codes") or []
     if focus:
@@ -68,8 +109,16 @@ def _candidate_hint(trigger: Dict[str, Any], limit: int = 3) -> str:
         if key == industry or industry in key or key in industry:
             entries = val
             break
+
+    exclude = set(exclude_codes or [])
+    if exclude:
+        filtered = [e for e in entries if e["code"] not in exclude]
+        use = filtered if filtered else entries  # 全部被剔除则退回原列表
+    else:
+        use = entries
+
     brief = [{"code": e["code"], "name": e["name"], "note": e.get("note", "")}
-             for e in entries[:limit]]
+             for e in use[:limit]]
     return json.dumps(brief, ensure_ascii=False, indent=2)
 
 
@@ -207,10 +256,25 @@ def _run_react(state: AgentState):
     if state.get("last_decision"):
         instructions = state["last_decision"].instructions
 
+    # B 方案：查近 N 天同行业已推荐 code，候选池和 prompt 双路过滤
+    exclude_codes = _recent_same_industry_codes(
+        trigger.get("industry", ""),
+        exclude_trigger_id=trigger_ref,
+    )
+
+    exclude_section = ""
+    if exclude_codes:
+        exclude_section = (
+            f"### 近 {RECENT_DEDUP_DAYS} 天同行业已推荐股（请**避开**，优先分析新标的）\n"
+            f"```json\n{json.dumps(exclude_codes, ensure_ascii=False)}\n```\n"
+            f"> 若候选池中的股票已全部在上述列表里，才可复用；否则请研究新标的。\n\n"
+        )
+
     user_input = (
         f"### Supervisor 下达的研究指令\n{instructions}\n\n"
         f"### 触发信号\n```json\n{json.dumps(trigger, ensure_ascii=False, indent=2)}\n```\n\n"
-        f"### 候选股票池提示\n```json\n{_candidate_hint(trigger, limit=3)}\n```\n\n"
+        f"### 候选股票池提示\n```json\n{_candidate_hint(trigger, limit=3, exclude_codes=exclude_codes)}\n```\n\n"
+        f"{exclude_section}"
         f"**执行约束**：\n"
         f"- 至少调用工具 2 次、至多调用 6 次\n"
         f"- 调用工具次数达到 4 次后应当考虑停止\n"

@@ -49,7 +49,7 @@ export const api = {
     const qs = new URLSearchParams({ ids: ids.join(","), limit: ids.length });
     return request(`/news?${qs}`);
   },
-  newsStats: () => request("/news/stats"),
+  newsStats: (date) => request(`/news/stats${date ? `?date=${date}` : ""}`),
   listLogs: ({ level, source_prefix, date, limit = 50 } = {}) => {
     const qs = new URLSearchParams();
     if (level) qs.set("level", level);

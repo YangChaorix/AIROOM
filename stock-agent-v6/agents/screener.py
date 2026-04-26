@@ -98,6 +98,27 @@ def _call_llm(prompt: str) -> str:
     return msg.content if hasattr(msg, "content") else str(msg)
 
 
+def _recompute_totals(result: ScreenerResult) -> None:
+    """用 condition_scores 的 weighted_score 加和覆盖 LLM 给的 total_score，
+    并按 threshold_used 重算 recommendation_level。LLM 不做算术，保证前端
+    展示的加权和 == 总分，且评级与总分一致（S3 守护）。
+    """
+    threshold = result.threshold_used
+    for s in result.stocks:
+        # 每条 weighted_score 也强制 = satisfaction × weight（LLM 偶尔也在这里乱写）
+        recomputed = 0.0
+        for cs in s.condition_scores:
+            cs.weighted_score = round(cs.satisfaction * cs.weight, 4)
+            recomputed += cs.weighted_score
+        s.total_score = round(recomputed, 4)
+        if s.total_score >= threshold:
+            s.recommendation_level = "recommend"
+        elif s.total_score >= 0.5:
+            s.recommendation_level = "watch"
+        else:
+            s.recommendation_level = "skip"
+
+
 def _score(state: AgentState) -> ScreenerResult:
     prompt = _build_prompt(state)
     last_error: Exception = None
@@ -106,7 +127,9 @@ def _score(state: AgentState) -> ScreenerResult:
         json_text = _extract_json_object(raw)
         try:
             data = json.loads(json_text)
-            return ScreenerResult(**data)
+            result = ScreenerResult(**data)
+            _recompute_totals(result)
+            return result
         except (json.JSONDecodeError, ValidationError) as e:
             last_error = e
             prompt = prompt + f"\n\n## 上一次输出验证失败\n错误：{e}\n请严格按 ScreenerResult JSON 重新输出。"
