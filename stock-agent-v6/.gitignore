@@ -59,6 +59,7 @@ outputs/runs/
 # IDE
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 
